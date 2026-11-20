@@ -7,6 +7,10 @@ export * from './WABinary/index.js';
 export * from './WAM/index.js';
 export * from './WAUSync/index.js';
 export type WASocket = ReturnType<typeof makeWASocket>;
+export { extractMessage } from './Utils/messages.js';
+export { createDownloadMediaHelper, createReplyHelper } from './Socket/messages-send.js';
+export { unwrapMessageContent } from './Socket/socket.js';
+export type { SocketMessageHelpers } from './Socket/socket.js';
 export { makeWASocket };
 export default makeWASocket;
 //# sourceMappingURL=index.d.ts.map

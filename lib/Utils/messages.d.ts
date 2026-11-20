@@ -1,6 +1,6 @@
 import { type Transform } from 'stream';
 import { proto } from '../../WAProto/index.js';
-import type { AnyMediaMessageContent, AnyMessageContent, MessageContentGenerationOptions, MessageGenerationOptions, MessageGenerationOptionsFromContent, MessageUserReceipt, WAMessage, WAMessageContent, WAMessageKey } from '../Types/index.js';
+import type { AnyMediaMessageContent, AnyMessageContent, ExtractedMessage, MessageContentGenerationOptions, MessageGenerationOptions, MessageGenerationOptionsFromContent, MessageUserReceipt, WAMessage, WAMessageContent, WAMessageKey } from '../Types/index.js';
 import type { ILogger } from './logger.js';
 import { type MediaDownloadOptions } from './messages-media.js';
 type ExtractByKey<T, K extends PropertyKey> = T extends Record<K, any> ? T : never;
@@ -37,6 +37,10 @@ export declare const normalizeMessageContent: (content: WAMessageContent | null 
  * Eg. extracts the inner message from a disappearing message/view once message
  */
 export declare const extractMessageContent: (content: WAMessageContent | undefined | null) => WAMessageContent | undefined;
+/**
+ * Strips wrappers before reading text or reply IDs, and parses native flow params when present.
+ */
+export declare const extractMessage: (msg: WAMessage | WAMessageContent | undefined | null) => ExtractedMessage;
 /**
  * Returns the device predicted by message ID
  */

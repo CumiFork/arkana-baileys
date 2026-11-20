@@ -97,13 +97,19 @@ export type PollMessageOptions = {
     messageSecret?: Uint8Array;
     toAnnouncementGroup?: boolean;
 };
+export type EventTimestamp = number | Date | string;
 export type EventMessageOptions = {
     name: string;
     description?: string;
-    startDate: Date;
-    endDate?: Date;
+    /** Unix seconds, milliseconds, Date or ISO string */
+    startTime?: EventTimestamp;
+    endTime?: EventTimestamp;
+    /** Accepted for compatibility with older arkana-baileys calls */
+    startDate?: EventTimestamp;
+    endDate?: EventTimestamp;
     location?: WALocationMessage;
     call?: 'audio' | 'video';
+    isCanceled?: boolean;
     isCancelled?: boolean;
     isScheduleCall?: boolean;
     extraGuestsAllowed?: boolean;
@@ -114,6 +120,25 @@ export type AlbumMessageOptions = {
     expectedImageCount?: number;
     /** Number of videos expected in the album */
     expectedVideoCount?: number;
+};
+export type AlbumMediaItem = ({
+    image: WAMediaUpload;
+} | {
+    video: WAMediaUpload;
+}) & {
+    caption?: string;
+    jpegThumbnail?: string;
+    mimetype?: string;
+};
+export type ChannelBadgeInfo = {
+    jid: string;
+    name: string;
+    serverMessageId?: number;
+};
+type Forwardable = {
+    channelBadge?: ChannelBadgeInfo;
+    isForwarded?: boolean;
+    forwardingScore?: number;
 };
 type SharePhoneNumber = {
     sharePhoneNumber: boolean;
@@ -132,6 +157,11 @@ export type AnyMediaMessageContent = (({
     jpegThumbnail?: string;
     /** if set to true, will send as a `video note` */
     ptv?: boolean;
+} & Mentionable & Contextable & WithDimensions) | ({
+    videoNote: WAMediaUpload;
+    caption?: string;
+    jpegThumbnail?: string;
+    mimetype?: string;
 } & Mentionable & Contextable & WithDimensions) | {
     audio: WAMediaUpload;
     /** if set to true, will send as a `voice note` */
@@ -215,7 +245,7 @@ export type AnyRegularMessageContent = (({
 } | ({
     poll: PollMessageOptions;
 } & Mentionable & Contextable & Editable) | ({
-    album: AlbumMessageOptions;
+    album: AlbumMessageOptions | AlbumMediaItem[];
 } & Contextable & Mentionable) | {
     contacts: {
         displayName?: string;
@@ -244,7 +274,7 @@ export type AnyRegularMessageContent = (({
     businessOwnerJid?: string;
     body?: string;
     footer?: string;
-} | SharePhoneNumber | RequestPhoneNumber) & ViewOnce;
+} | SharePhoneNumber | RequestPhoneNumber) & ViewOnce & Forwardable;
 export type AnyMessageContent = AnyRegularMessageContent | {
     forward: WAMessage;
     force?: boolean;
@@ -255,6 +285,14 @@ export type AnyMessageContent = AnyRegularMessageContent | {
     disappearingMessagesInChat: boolean | number;
 } | {
     limitSharing: boolean;
+};
+export type ExtractedMessage = {
+    type?: MessageType;
+    message?: WAMessageContent;
+    text?: string;
+    selectedId?: string;
+    flowParams?: Record<string, unknown> | WAMessageContent;
+    quoted?: ExtractedMessage;
 };
 export type GroupMetadataParticipants = Pick<GroupMetadata, 'participants'>;
 type MinimalRelayOptions = {

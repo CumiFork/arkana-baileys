@@ -2725,12 +2725,14 @@ message Message {
                 Message.LocationMessage locationMessage = 8;
                 Message.ProductMessage productMessage = 9;
             }
+            optional string accessibilityLabel = 10;
         }
 
         message NativeFlowMessage {
             repeated NativeFlowButton buttons = 1;
             optional string messageParamsJson = 2;
             optional int32 messageVersion = 3;
+            optional string flowId = 4;
             message NativeFlowButton {
                 optional string name = 1;
                 optional string buttonParamsJson = 2;

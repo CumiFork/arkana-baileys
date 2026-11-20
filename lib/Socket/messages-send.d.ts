@@ -1,10 +1,22 @@
 import NodeCache from '@cacheable/node-cache';
 import { Boom } from '@hapi/boom';
 import { proto } from '../../WAProto/index.js';
-import type { AnyMessageContent, MediaConnInfo, MessageReceiptType, MessageRelayOptions, MiscMessageGenerationOptions, SocketConfig, WAMessage, WAMessageKey } from '../Types/index.js';
+import type { AnyMessageContent, MediaConnInfo, MessageReceiptType, MessageRelayOptions, MiscMessageGenerationOptions, SocketConfig, WAMessage, WAMessageContent, WAMessageKey } from '../Types/index.js';
 import { MessageRetryManager } from '../Utils/index.js';
+import type { MediaDownloadOptions } from '../Utils/messages-media.js';
 import { type BinaryNode, type JidWithDevice } from '../WABinary/index.js';
 import { USyncQuery } from '../WAUSync/index.js';
+export declare const createReplyHelper: (sendMessage: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>) => (jid: string, content: AnyMessageContent | string, quoted?: WAMessage, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+export declare const createDownloadMediaHelper: (deps?: {
+    options?: MediaDownloadOptions;
+    ctx?: {
+        reuploadRequest: (msg: WAMessage) => Promise<WAMessage>;
+        logger: import('../Utils/logger.js').ILogger;
+    };
+    download?: typeof import('../Utils/index.js').downloadMediaMessage;
+}) => (message: WAMessage | WAMessageContent | {
+    quotedMessage?: WAMessage;
+}) => Promise<Buffer>;
 export declare const makeMessagesSocket: (config: SocketConfig) => {
     userDevicesCache: import("../Types/index.js").PossiblyExtendedCacheStore | NodeCache<JidWithDevice[]>;
     devicesMutex: {
@@ -34,6 +46,10 @@ export declare const makeMessagesSocket: (config: SocketConfig) => {
     updateMemberLabel: (jid: string, memberLabel: string) => Promise<string>;
     updateMediaMessage: (message: WAMessage) => Promise<WAMessage>;
     sendMessage: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    reply: (jid: string, content: AnyMessageContent | string, quoted?: WAMessage, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    downloadMedia: (message: WAMessage | WAMessageContent | {
+        quotedMessage?: WAMessage;
+    }) => Promise<Buffer>;
     newsletterCreate: (name: string, description?: string) => Promise<import("../Types/index.js").NewsletterMetadata>;
     newsletterUpdate: (jid: string, updates: import("../Types/index.js").NewsletterUpdate) => Promise<unknown>;
     newsletterSubscribers: (jid: string) => Promise<{

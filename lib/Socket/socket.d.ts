@@ -1,9 +1,18 @@
 import { Boom } from '@hapi/boom';
-import { type NewChatMessageCapInfo, type ReachoutTimelockState, type SocketConfig } from '../Types/index.js';
+import { type AnyMessageContent, type MiscMessageGenerationOptions, type NewChatMessageCapInfo, type ReachoutTimelockState, type SocketConfig, type WAMessage, type WAMessageContent } from '../Types/index.js';
 import { type BinaryNode } from '../WABinary/index.js';
 import { BinaryInfo } from '../WAM/BinaryInfo.js';
 import { USyncQuery } from '../WAUSync/index.js';
 import { WebSocketClient } from './Client/index.js';
+
+export declare const MESSAGE_WRAPPER_KEYS: readonly string[];
+export declare const unwrapMessageContent: <T>(content: T) => T;
+export type SocketMessageHelpers = {
+    reply: (jid: string, content: AnyMessageContent | string, quoted?: WAMessage, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    downloadMedia: (message: WAMessage | WAMessageContent | {
+        quotedMessage?: WAMessage;
+    }) => Promise<Buffer>;
+};
 /**
  * Connects to WA servers and performs:
  * - simple queries (no retry mechanism, wait for connection establishment)
