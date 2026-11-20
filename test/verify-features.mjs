@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createDownloadMediaHelper, createReplyHelper, extractMessage, generateWAMessageContent, generateWAMessageFromContent, getContentType, normalizeMessageContent, proto } from 'arkana-baileys';
+import { aesEncryptGCM, createDownloadMediaHelper, createLidResolver, createMessageStore, createReplyHelper, configurePollContext, extractMessage, generateWAMessageContent, generateWAMessageFromContent, getContentType, hmacSign, normalizeMessageContent, proto, sha256 } from 'arkana-baileys';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const jid = '6281234567890@s.whatsapp.net';
@@ -332,8 +332,80 @@ for (const [content, expectedId] of [
     assert.ok(extracted.text);
 }
 
+const store = createMessageStore(2);
+store.put({ key: { remoteJid: jid, id: 'store-a' } });
+store.put({ key: { remoteJid: jid, id: 'store-b' } });
+store.put({ key: { remoteJid: jid, id: 'store-c' } });
+assert.equal(store.size, 2);
+assert.equal(store.get({ id: 'store-a' }), undefined);
+assert.ok(store.get({ id: 'store-c' }));
+
+const resolver = createLidResolver();
+resolver.learn('163630452625506@lid', '6281234567890@s.whatsapp.net');
+assert.equal(resolver.resolve('163630452625506@lid'), '6281234567890@s.whatsapp.net');
+assert.equal(resolver.resolve('163630452625506:9@lid'), '6281234567890:9@s.whatsapp.net');
+
+const extendedButtons = roundtrip(await generateWAMessageContent({
+    text: 'Tombol tambahan',
+    interactiveButtons: [
+        { type: 'cta_copy', display_text: 'Salin', copy_code: 'ARKANA50', id: 'copy' },
+        { type: 'cta_call', display_text: 'Telepon', phone_number: '+6281234567890' },
+        { type: 'send_location', display_text: 'Lokasi' }
+    ]
+}, options));
+assert.deepEqual(
+    extendedButtons.interactiveMessage.nativeFlowMessage.buttons.map(button => button.name),
+    ['cta_copy', 'cta_call', 'send_location']
+);
+assert.equal(
+    JSON.parse(extendedButtons.interactiveMessage.nativeFlowMessage.buttons[0].buttonParamsJson).copy_code,
+    'ARKANA50'
+);
+
+const paymentShortcut = roundtrip(await generateWAMessageContent({
+    requestPayment: { currency: 'IDR', amount: 50000, note: 'Tagihan' }
+}, options));
+assert.equal(paymentShortcut.requestPaymentMessage.currencyCodeIso4217, 'IDR');
+assert.equal(Number(paymentShortcut.requestPaymentMessage.amount1000), 50000000);
+assert.equal(paymentShortcut.requestPaymentMessage.noteMessage.extendedTextMessage.text, 'Tagihan');
+
+const pollForVote = generateWAMessageFromContent(jid, await generateWAMessageContent({
+    poll: { name: 'Vote', values: ['A', 'B'], selectableCount: 1 }
+}, options), { userJid: jid });
+configurePollContext({ getMessage: store.get, getOwnJid: () => jid });
+const voterJid = '6281111111111@s.whatsapp.net';
+const pollMsgId = pollForVote.key.id;
+const secret = pollForVote.message.messageContextInfo.messageSecret;
+const sign = Buffer.concat([
+    Buffer.from(pollMsgId),
+    Buffer.from(jid),
+    Buffer.from(voterJid),
+    Buffer.from('Poll Vote'),
+    new Uint8Array([1])
+]);
+const key0 = hmacSign(secret, new Uint8Array(32), 'sha256');
+const decKey = hmacSign(sign, key0, 'sha256');
+const iv = Buffer.alloc(12);
+const plaintext = proto.Message.PollVoteMessage.encode({
+    selectedOptions: [sha256(Buffer.from('A'))]
+}).finish();
+const encPayload = aesEncryptGCM(plaintext, decKey, iv, Buffer.from(`${pollMsgId}\u0000${voterJid}`));
+const voteMsg = {
+    key: { remoteJid: jid, participant: voterJid, id: 'vote-1' },
+    message: proto.Message.fromObject({
+        pollUpdateMessage: {
+            pollCreationMessageKey: pollForVote.key,
+            vote: { encPayload, encIv: iv },
+            senderTimestampMs: 1
+        }
+    })
+};
+store.put(pollForVote);
+store.put(voteMsg);
+assert.deepEqual(extractMessage(voteMsg).pollVotes, ['A']);
+
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
-assert.equal(pkg.version, '1.2.0-mod');
+assert.equal(pkg.version, '1.3.0-mod');
 assert.equal(pkg.scripts.prepare, undefined);
 const walk = dir => readdirSync(dir).flatMap(entry => {
     const path = join(dir, entry);

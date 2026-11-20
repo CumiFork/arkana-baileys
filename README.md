@@ -276,8 +276,74 @@ sock.ev.on('messages.upsert', ({ messages }) => {
 })
 ```
 
+## Auto-LID, message store, dan dekripsi vote poll
+
+Socket menyimpan pasangan `lid <-> pn` dari `contacts.upsert`, `contacts.update`, `chats.upsert`, dan `messages.upsert`. Target `@lid` pada `sendMessage`, `reply`, dan `relayMessage` diterjemahkan otomatis ke `@s.whatsapp.net`.
+
+`makeWASocket` juga memasang message store LRU 500 pesan sebagai `getMessage` default. Store ini dipakai ulang oleh retry dan dekripsi `pollUpdateMessage`. `extractMessage` mengembalikan `pollVotes` dan `selectedOptions` berisi nama opsi hasil dekripsi.
+
+```js
+const info = extractMessage(msg)
+if (info.type === 'pollUpdateMessage') {
+  console.log('Vote:', info.pollVotes)
+}
+```
+
+## Status mention, hidetag, dan readViewOnce
+
+```js
+await sock.sendStatusMention({ text: 'Halo semua!' }, [
+  '6281234567890@s.whatsapp.net',
+  '120363012345678901@g.us'
+], { backgroundColor: '#FF5500', font: 2 })
+
+await sock.hidetag('120363012345678901@g.us', { text: 'Halo @all' })
+
+const media = await sock.readViewOnce(msg)
+console.log(media.type, media.mimetype, media.buffer.length)
+```
+
+## fakeQuote, channelBadge opsi, dan tombol native flow baru
+
+`channelBadge: true` atau `{ newsletterJid, newsletterName }` pada opsi `sendMessage`/`reply` menyuntikkan badge forwarded ke teks, media, maupun `interactiveMessage`. `fakeQuote` membuat quote sintetis tanpa membungkus teks ke `viewOnceMessage`.
+
+```js
+await sock.reply(jid, { text: 'Balasan dengan badge' }, msg, {
+  channelBadge: true,
+  fakeQuote: {
+    participant: jid,
+    stanzaId: 'AC441757748997A22108E588876D4B28',
+    quotedMessage: { conversation: 'Pesan asli' }
+  }
+})
+
+await sock.sendMessage(jid, {
+  text: 'Pilih:',
+  interactiveButtons: [
+    { type: 'cta_copy', display_text: 'Salin kode', copy_code: 'ARKANA50', id: 'copy' },
+    { type: 'cta_call', display_text: 'Telepon', phone_number: '+6281234567890' },
+    { type: 'send_location', display_text: 'Kirim lokasi' }
+  ]
+})
+```
+
+## Permintaan pembayaran
+
+```js
+await sock.sendMessage(jid, {
+  requestPayment: {
+    currency: 'IDR',
+    amount: 50000,
+    from: jid,
+    note: 'Tagihan langganan'
+  }
+})
+```
+
+`amount1000` dihitung otomatis sebagai `amount * 1000` dan `note` menjadi `noteMessage`.
+
 ## Catatan
 
-Versi `1.2.0-mod` memakai `WAProto/index.proto` sebagai skema kanonik. Schema mencakup `pollCreationMessageV3`, `eventMessage.extraGuestsAllowed`, `messageAssociation` untuk album, dan field tambahan `accessibilityLabel` serta `flowId` pada pesan interaktif.
+Versi `1.3.0-mod` memakai `WAProto/index.proto` sebagai skema kanonik. Schema mencakup `pollCreationMessageV3`, `eventMessage.extraGuestsAllowed`, `messageAssociation` untuk album, dan field tambahan `accessibilityLabel` serta `flowId` pada pesan interaktif.
 
 Proyek ini bukan produk resmi WhatsApp. Gunakan sesuai kebijakan layanan WhatsApp dan tanggung jawab Anda sendiri. Kode ini dilanjutkan dari Baileys oleh WhiskeySockets di bawah lisensi MIT.

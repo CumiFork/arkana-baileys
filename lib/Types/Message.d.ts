@@ -131,8 +131,10 @@ export type AlbumMediaItem = ({
     mimetype?: string;
 };
 export type ChannelBadgeInfo = {
-    jid: string;
-    name: string;
+    jid?: string;
+    name?: string;
+    newsletterJid?: string;
+    newsletterName?: string;
     serverMessageId?: number;
 };
 type Forwardable = {
@@ -145,6 +147,16 @@ type SharePhoneNumber = {
 };
 type RequestPhoneNumber = {
     requestPhoneNumber: boolean;
+};
+export type RequestPaymentContent = {
+    requestPayment: {
+        currency?: string;
+        amount: number;
+        from?: string;
+        note?: string;
+        background?: Record<string, unknown>;
+        expiryTimestamp?: number;
+    };
 };
 export type AnyMediaMessageContent = (({
     image: WAMediaUpload;
@@ -274,7 +286,7 @@ export type AnyRegularMessageContent = (({
     businessOwnerJid?: string;
     body?: string;
     footer?: string;
-} | SharePhoneNumber | RequestPhoneNumber) & ViewOnce & Forwardable;
+} | SharePhoneNumber | RequestPhoneNumber | RequestPaymentContent) & ViewOnce & Forwardable;
 export type AnyMessageContent = AnyRegularMessageContent | {
     forward: WAMessage;
     force?: boolean;
@@ -292,6 +304,8 @@ export type ExtractedMessage = {
     text?: string;
     selectedId?: string;
     flowParams?: Record<string, unknown> | WAMessageContent;
+    pollVotes?: string[];
+    selectedOptions?: string[];
     quoted?: ExtractedMessage;
 };
 export type GroupMetadataParticipants = Pick<GroupMetadata, 'participants'>;
@@ -334,6 +348,15 @@ export type MiscMessageGenerationOptions = MinimalRelayOptions & {
     font?: number;
     /** if it is broadcast */
     broadcast?: boolean;
+    /** inject forwarded newsletter badge into any outgoing message */
+    channelBadge?: boolean | ChannelBadgeInfo;
+    /** build an outgoing message with a synthetic quote instead of a real quoted message */
+    fakeQuote?: {
+        participant?: string;
+        stanzaId?: string;
+        quotedMessage?: proto.Message;
+        text?: string;
+    };
 };
 export type MessageGenerationOptionsFromContent = MiscMessageGenerationOptions & {
     userJid: string;

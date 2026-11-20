@@ -8,7 +8,7 @@ export * from './WAM/index.js';
 export * from './WAUSync/index.js';
 export type WASocket = ReturnType<typeof makeWASocket>;
 export { extractMessage } from './Utils/messages.js';
-export { createDownloadMediaHelper, createReplyHelper } from './Socket/messages-send.js';
+export { applyContextPatch, buildFakeQuote, createDownloadMediaHelper, createHidetagHelper, createReadViewOnceHelper, createReplyHelper, createStatusMentionHelper } from './Socket/messages-send.js';
 export { unwrapMessageContent } from './Socket/socket.js';
 export type { SocketMessageHelpers } from './Socket/socket.js';
 export { makeWASocket };

@@ -106,6 +106,12 @@ export type SocketConfig = {
     enableAutoSessionRecreation: boolean;
     /** Enable recent message caching for retry handling */
     enableRecentMessageCache: boolean;
+    /** Built-in LRU message store used by the default getMessage implementation */
+    messageStore?: import('../Utils/message-store.js').MessageStore;
+    /** Maximum size of the built-in message store */
+    messageStoreLimit?: number;
+    /** Shared LID <-> PN resolver installed on the socket */
+    lidResolver?: import('../Utils/lid-resolver.js').LidResolver;
     /**
      * Returns if a jid should be ignored,
      * no event for that jid will be triggered.

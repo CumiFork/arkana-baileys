@@ -17,6 +17,29 @@ export declare const createDownloadMediaHelper: (deps?: {
 }) => (message: WAMessage | WAMessageContent | {
     quotedMessage?: WAMessage;
 }) => Promise<Buffer>;
+export declare const applyContextPatch: (generated: WAMessage, options?: MiscMessageGenerationOptions) => WAMessage;
+export declare const buildFakeQuote: (fake?: {
+    participant?: string;
+    stanzaId?: string;
+    quotedMessage?: proto.Message;
+    text?: string;
+}, jid?: string) => { quoted: WAMessage };
+export declare const createStatusMentionHelper: (deps: {
+    sendMessage: (...args: any[]) => Promise<WAMessage | undefined>;
+    relayMessage: (...args: any[]) => Promise<string>;
+    getGroupMetadata: (jid: string) => Promise<any>;
+    getOwnJid: () => string | undefined;
+    resolveJid: (jid: string) => string;
+    logger?: any;
+}) => (content: AnyMessageContent, jids?: string[], options?: MiscMessageGenerationOptions & { mentionText?: string }) => Promise<WAMessage | undefined>;
+export declare const createHidetagHelper: (deps: {
+    sendMessage: (...args: any[]) => Promise<WAMessage | undefined>;
+    getGroupMetadata: (jid: string) => Promise<any>;
+    resolveJid: (jid: string) => string;
+}) => (groupJid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+export declare const createReadViewOnceHelper: (deps: {
+    downloadMedia: (msg: WAMessage) => Promise<Buffer>;
+}) => (msg: WAMessage) => Promise<{ buffer: Buffer; mimetype: string; type: string; caption: string }>;
 export declare const makeMessagesSocket: (config: SocketConfig) => {
     userDevicesCache: import("../Types/index.js").PossiblyExtendedCacheStore | NodeCache<JidWithDevice[]>;
     devicesMutex: {
@@ -50,6 +73,18 @@ export declare const makeMessagesSocket: (config: SocketConfig) => {
     downloadMedia: (message: WAMessage | WAMessageContent | {
         quotedMessage?: WAMessage;
     }) => Promise<Buffer>;
+    sendStatusMention: (content: AnyMessageContent, jids?: string[], options?: MiscMessageGenerationOptions & {
+        mentionText?: string;
+    }) => Promise<WAMessage | undefined>;
+    hidetag: (groupJid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
+    readViewOnce: (message: WAMessage | {
+        quotedMessage?: WAMessage;
+    }) => Promise<{
+        buffer: Buffer;
+        mimetype: string;
+        type: string;
+        caption: string;
+    }>;
     newsletterCreate: (name: string, description?: string) => Promise<import("../Types/index.js").NewsletterMetadata>;
     newsletterUpdate: (jid: string, updates: import("../Types/index.js").NewsletterUpdate) => Promise<unknown>;
     newsletterSubscribers: (jid: string) => Promise<{
