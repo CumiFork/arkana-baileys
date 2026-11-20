@@ -25210,6 +25210,9 @@ export namespace proto {
 
         /** Message pollResultSnapshotMessageV3 */
         pollResultSnapshotMessageV3?: (proto.Message.IPollResultSnapshotMessage|null);
+
+        /** Message addonActionSection */
+        addonActionSection?: (proto.Message.IAddonActionSection|null);
     }
 
     /** Represents a Message. */
@@ -25506,6 +25509,9 @@ export namespace proto {
         /** Message pollResultSnapshotMessageV3. */
         public pollResultSnapshotMessageV3?: (proto.Message.IPollResultSnapshotMessage|null);
 
+        /** Message addonActionSection. */
+        public addonActionSection?: (proto.Message.IAddonActionSection|null);
+
         /** Message _conversation. */
         public _conversation?: "conversation";
 
@@ -25791,6 +25797,9 @@ export namespace proto {
         /** Message _pollResultSnapshotMessageV3. */
         public _pollResultSnapshotMessageV3?: "pollResultSnapshotMessageV3";
 
+        /** Message _addonActionSection. */
+        public _addonActionSection?: "addonActionSection";
+
         /**
          * Creates a new Message instance using the specified properties.
          * @param [properties] Properties to set
@@ -25870,6 +25879,297 @@ export namespace proto {
     }
 
     namespace Message {
+
+        /** Properties of an AddonActionSection. */
+        interface IAddonActionSection {
+
+            /** AddonActionSection addonAction */
+            addonAction?: (proto.Message.AddonActionSection.IAddonAction|null);
+
+            /** AddonActionSection primitives */
+            primitives?: (proto.Message.AddonActionSection.IPrimitive[]|null);
+        }
+
+        /** Represents an AddonActionSection. */
+        class AddonActionSection implements IAddonActionSection {
+
+            /**
+             * Constructs a new AddonActionSection.
+             * @param [properties] Properties to set
+             */
+            constructor(properties?: proto.Message.IAddonActionSection);
+
+            /** AddonActionSection addonAction. */
+            public addonAction?: (proto.Message.AddonActionSection.IAddonAction|null);
+
+            /** AddonActionSection primitives. */
+            public primitives: proto.Message.AddonActionSection.IPrimitive[];
+
+            /** AddonActionSection _addonAction. */
+            public _addonAction?: "addonAction";
+
+            /**
+             * Creates a new AddonActionSection instance using the specified properties.
+             * @param [properties] Properties to set
+             * @returns AddonActionSection instance
+             */
+            public static create(properties?: proto.Message.IAddonActionSection): proto.Message.AddonActionSection;
+
+            /**
+             * Encodes the specified AddonActionSection message. Does not implicitly {@link proto.Message.AddonActionSection.verify|verify} messages.
+             * @param message AddonActionSection message or plain object to encode
+             * @param [writer] Writer to encode to
+             * @returns Writer
+             */
+            public static encode(message: proto.Message.IAddonActionSection, writer?: $protobuf.Writer): $protobuf.Writer;
+
+            /**
+             * Encodes the specified AddonActionSection message, length delimited. Does not implicitly {@link proto.Message.AddonActionSection.verify|verify} messages.
+             * @param message AddonActionSection message or plain object to encode
+             * @param [writer] Writer to encode to
+             * @returns Writer
+             */
+            public static encodeDelimited(message: proto.Message.IAddonActionSection, writer?: $protobuf.Writer): $protobuf.Writer;
+
+            /**
+             * Decodes an AddonActionSection message from the specified reader or buffer.
+             * @param reader Reader or buffer to decode from
+             * @param [length] Message length if known beforehand
+             * @returns AddonActionSection
+             * @throws {Error} If the payload is not a reader or valid buffer
+             * @throws {$protobuf.util.ProtocolError} If required fields are missing
+             */
+            public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): proto.Message.AddonActionSection;
+
+            /**
+             * Decodes an AddonActionSection message from the specified reader or buffer, length delimited.
+             * @param reader Reader or buffer to decode from
+             * @returns AddonActionSection
+             * @throws {Error} If the payload is not a reader or valid buffer
+             * @throws {$protobuf.util.ProtocolError} If required fields are missing
+             */
+            public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): proto.Message.AddonActionSection;
+
+            /**
+             * Verifies an AddonActionSection message.
+             * @param message Plain object to verify
+             * @returns `null` if valid, otherwise the reason why it is not
+             */
+            public static verify(message: { [k: string]: any }): (string|null);
+
+            /**
+             * Creates an AddonActionSection message from a plain object. Also converts values to their respective internal types.
+             * @param object Plain object
+             * @returns AddonActionSection
+             */
+            public static fromObject(object: { [k: string]: any }): proto.Message.AddonActionSection;
+
+            /**
+             * Creates a plain object from an AddonActionSection message. Also converts values to other types if specified.
+             * @param message AddonActionSection
+             * @param [options] Conversion options
+             * @returns Plain object
+             */
+            public static toObject(message: proto.Message.AddonActionSection, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+            /**
+             * Converts this AddonActionSection to JSON.
+             * @returns JSON object
+             */
+            public toJSON(): { [k: string]: any };
+
+            /**
+             * Gets the default type url for AddonActionSection
+             * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+             * @returns The default type url
+             */
+            public static getTypeUrl(typeUrlPrefix?: string): string;
+        }
+
+        namespace AddonActionSection {
+
+            /** Properties of an AddonAction. */
+            interface IAddonAction {
+            }
+
+            /** Represents an AddonAction. */
+            class AddonAction implements IAddonAction {
+
+                /**
+                 * Constructs a new AddonAction.
+                 * @param [properties] Properties to set
+                 */
+                constructor(properties?: proto.Message.AddonActionSection.IAddonAction);
+
+                /**
+                 * Creates a new AddonAction instance using the specified properties.
+                 * @param [properties] Properties to set
+                 * @returns AddonAction instance
+                 */
+                public static create(properties?: proto.Message.AddonActionSection.IAddonAction): proto.Message.AddonActionSection.AddonAction;
+
+                /**
+                 * Encodes the specified AddonAction message. Does not implicitly {@link proto.Message.AddonActionSection.AddonAction.verify|verify} messages.
+                 * @param message AddonAction message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encode(message: proto.Message.AddonActionSection.IAddonAction, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Encodes the specified AddonAction message, length delimited. Does not implicitly {@link proto.Message.AddonActionSection.AddonAction.verify|verify} messages.
+                 * @param message AddonAction message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encodeDelimited(message: proto.Message.AddonActionSection.IAddonAction, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Decodes an AddonAction message from the specified reader or buffer.
+                 * @param reader Reader or buffer to decode from
+                 * @param [length] Message length if known beforehand
+                 * @returns AddonAction
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): proto.Message.AddonActionSection.AddonAction;
+
+                /**
+                 * Decodes an AddonAction message from the specified reader or buffer, length delimited.
+                 * @param reader Reader or buffer to decode from
+                 * @returns AddonAction
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): proto.Message.AddonActionSection.AddonAction;
+
+                /**
+                 * Verifies an AddonAction message.
+                 * @param message Plain object to verify
+                 * @returns `null` if valid, otherwise the reason why it is not
+                 */
+                public static verify(message: { [k: string]: any }): (string|null);
+
+                /**
+                 * Creates an AddonAction message from a plain object. Also converts values to their respective internal types.
+                 * @param object Plain object
+                 * @returns AddonAction
+                 */
+                public static fromObject(object: { [k: string]: any }): proto.Message.AddonActionSection.AddonAction;
+
+                /**
+                 * Creates a plain object from an AddonAction message. Also converts values to other types if specified.
+                 * @param message AddonAction
+                 * @param [options] Conversion options
+                 * @returns Plain object
+                 */
+                public static toObject(message: proto.Message.AddonActionSection.AddonAction, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+                /**
+                 * Converts this AddonAction to JSON.
+                 * @returns JSON object
+                 */
+                public toJSON(): { [k: string]: any };
+
+                /**
+                 * Gets the default type url for AddonAction
+                 * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns The default type url
+                 */
+                public static getTypeUrl(typeUrlPrefix?: string): string;
+            }
+
+            /** Properties of a Primitive. */
+            interface IPrimitive {
+            }
+
+            /** Represents a Primitive. */
+            class Primitive implements IPrimitive {
+
+                /**
+                 * Constructs a new Primitive.
+                 * @param [properties] Properties to set
+                 */
+                constructor(properties?: proto.Message.AddonActionSection.IPrimitive);
+
+                /**
+                 * Creates a new Primitive instance using the specified properties.
+                 * @param [properties] Properties to set
+                 * @returns Primitive instance
+                 */
+                public static create(properties?: proto.Message.AddonActionSection.IPrimitive): proto.Message.AddonActionSection.Primitive;
+
+                /**
+                 * Encodes the specified Primitive message. Does not implicitly {@link proto.Message.AddonActionSection.Primitive.verify|verify} messages.
+                 * @param message Primitive message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encode(message: proto.Message.AddonActionSection.IPrimitive, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Encodes the specified Primitive message, length delimited. Does not implicitly {@link proto.Message.AddonActionSection.Primitive.verify|verify} messages.
+                 * @param message Primitive message or plain object to encode
+                 * @param [writer] Writer to encode to
+                 * @returns Writer
+                 */
+                public static encodeDelimited(message: proto.Message.AddonActionSection.IPrimitive, writer?: $protobuf.Writer): $protobuf.Writer;
+
+                /**
+                 * Decodes a Primitive message from the specified reader or buffer.
+                 * @param reader Reader or buffer to decode from
+                 * @param [length] Message length if known beforehand
+                 * @returns Primitive
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): proto.Message.AddonActionSection.Primitive;
+
+                /**
+                 * Decodes a Primitive message from the specified reader or buffer, length delimited.
+                 * @param reader Reader or buffer to decode from
+                 * @returns Primitive
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobuf.util.ProtocolError} If required fields are missing
+                 */
+                public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): proto.Message.AddonActionSection.Primitive;
+
+                /**
+                 * Verifies a Primitive message.
+                 * @param message Plain object to verify
+                 * @returns `null` if valid, otherwise the reason why it is not
+                 */
+                public static verify(message: { [k: string]: any }): (string|null);
+
+                /**
+                 * Creates a Primitive message from a plain object. Also converts values to their respective internal types.
+                 * @param object Plain object
+                 * @returns Primitive
+                 */
+                public static fromObject(object: { [k: string]: any }): proto.Message.AddonActionSection.Primitive;
+
+                /**
+                 * Creates a plain object from a Primitive message. Also converts values to other types if specified.
+                 * @param message Primitive
+                 * @param [options] Conversion options
+                 * @returns Plain object
+                 */
+                public static toObject(message: proto.Message.AddonActionSection.Primitive, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+                /**
+                 * Converts this Primitive to JSON.
+                 * @returns JSON object
+                 */
+                public toJSON(): { [k: string]: any };
+
+                /**
+                 * Gets the default type url for Primitive
+                 * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns The default type url
+                 */
+                public static getTypeUrl(typeUrlPrefix?: string): string;
+            }
+        }
 
         /** Properties of an AlbumMessage. */
         interface IAlbumMessage {

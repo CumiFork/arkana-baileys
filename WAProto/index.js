@@ -75727,6 +75727,7 @@ export const proto = $root.proto = (() => {
          * @property {proto.Message.IPollCreationMessage|null} [pollCreationMessageV5] Message pollCreationMessageV5
          * @property {proto.Message.INewsletterFollowerInviteMessage|null} [newsletterFollowerInviteMessageV2] Message newsletterFollowerInviteMessageV2
          * @property {proto.Message.IPollResultSnapshotMessage|null} [pollResultSnapshotMessageV3] Message pollResultSnapshotMessageV3
+         * @property {proto.Message.IAddonActionSection|null} [addonActionSection] Message addonActionSection
          */
 
         /**
@@ -76503,6 +76504,14 @@ export const proto = $root.proto = (() => {
          * @instance
          */
         Message.prototype.pollResultSnapshotMessageV3 = null;
+
+        /**
+         * Message addonActionSection.
+         * @member {proto.Message.IAddonActionSection|null|undefined} addonActionSection
+         * @memberof proto.Message
+         * @instance
+         */
+        Message.prototype.addonActionSection = null;
 
         // OneOf field names bound to virtual getters and setters
         let $oneOfFields;
@@ -77553,6 +77562,17 @@ export const proto = $root.proto = (() => {
         });
 
         /**
+         * Message _addonActionSection.
+         * @member {"addonActionSection"|undefined} _addonActionSection
+         * @memberof proto.Message
+         * @instance
+         */
+        Object.defineProperty(Message.prototype, "_addonActionSection", {
+            get: $util.oneOfGetter($oneOfFields = ["addonActionSection"]),
+            set: $util.oneOfSetter($oneOfFields)
+        });
+
+        /**
          * Creates a new Message instance using the specified properties.
          * @function create
          * @memberof proto.Message
@@ -77766,6 +77786,8 @@ export const proto = $root.proto = (() => {
                 $root.proto.Message.NewsletterFollowerInviteMessage.encode(message.newsletterFollowerInviteMessageV2, writer.uint32(/* id 113, wireType 2 =*/906).fork()).ldelim();
             if (message.pollResultSnapshotMessageV3 != null && Object.hasOwnProperty.call(message, "pollResultSnapshotMessageV3"))
                 $root.proto.Message.PollResultSnapshotMessage.encode(message.pollResultSnapshotMessageV3, writer.uint32(/* id 114, wireType 2 =*/914).fork()).ldelim();
+            if (message.addonActionSection != null && Object.hasOwnProperty.call(message, "addonActionSection"))
+                $root.proto.Message.AddonActionSection.encode(message.addonActionSection, writer.uint32(/* id 115, wireType 2 =*/922).fork()).ldelim();
             return writer;
         };
 
@@ -78184,6 +78206,10 @@ export const proto = $root.proto = (() => {
                     }
                 case 114: {
                         message.pollResultSnapshotMessageV3 = $root.proto.Message.PollResultSnapshotMessage.decode(reader, reader.uint32(), undefined, long + 1);
+                        break;
+                    }
+                case 115: {
+                        message.addonActionSection = $root.proto.Message.AddonActionSection.decode(reader, reader.uint32(), undefined, long + 1);
                         break;
                     }
                 default:
@@ -78983,6 +79009,14 @@ export const proto = $root.proto = (() => {
                         return "pollResultSnapshotMessageV3." + error;
                 }
             }
+            if (message.addonActionSection != null && message.hasOwnProperty("addonActionSection")) {
+                properties._addonActionSection = 1;
+                {
+                    let error = $root.proto.Message.AddonActionSection.verify(message.addonActionSection, long + 1);
+                    if (error)
+                        return "addonActionSection." + error;
+                }
+            }
             return null;
         };
 
@@ -79473,6 +79507,11 @@ export const proto = $root.proto = (() => {
                 if (typeof object.pollResultSnapshotMessageV3 !== "object")
                     throw TypeError(".proto.Message.pollResultSnapshotMessageV3: object expected");
                 message.pollResultSnapshotMessageV3 = $root.proto.Message.PollResultSnapshotMessage.fromObject(object.pollResultSnapshotMessageV3, long + 1);
+            }
+            if (object.addonActionSection != null) {
+                if (typeof object.addonActionSection !== "object")
+                    throw TypeError(".proto.Message.addonActionSection: object expected");
+                message.addonActionSection = $root.proto.Message.AddonActionSection.fromObject(object.addonActionSection, long + 1);
             }
             return message;
         };
@@ -79965,6 +80004,11 @@ export const proto = $root.proto = (() => {
                 if (options.oneofs)
                     object._pollResultSnapshotMessageV3 = "pollResultSnapshotMessageV3";
             }
+            if (message.addonActionSection != null && message.hasOwnProperty("addonActionSection")) {
+                object.addonActionSection = $root.proto.Message.AddonActionSection.toObject(message.addonActionSection, options);
+                if (options.oneofs)
+                    object._addonActionSection = "addonActionSection";
+            }
             return object;
         };
 
@@ -79993,6 +80037,670 @@ export const proto = $root.proto = (() => {
             }
             return typeUrlPrefix + "/proto.Message";
         };
+
+        Message.AddonActionSection = (function() {
+
+            /**
+             * Properties of an AddonActionSection.
+             * @memberof proto.Message
+             * @interface IAddonActionSection
+             * @property {proto.Message.AddonActionSection.IAddonAction|null} [addonAction] AddonActionSection addonAction
+             * @property {Array.<proto.Message.AddonActionSection.IPrimitive>|null} [primitives] AddonActionSection primitives
+             */
+
+            /**
+             * Constructs a new AddonActionSection.
+             * @memberof proto.Message
+             * @classdesc Represents an AddonActionSection.
+             * @implements IAddonActionSection
+             * @constructor
+             * @param {proto.Message.IAddonActionSection=} [properties] Properties to set
+             */
+            function AddonActionSection(properties) {
+                this.primitives = [];
+                if (properties)
+                    for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                        if (properties[keys[i]] != null && keys[i] !== "__proto__")
+                            this[keys[i]] = properties[keys[i]];
+            }
+
+            /**
+             * AddonActionSection addonAction.
+             * @member {proto.Message.AddonActionSection.IAddonAction|null|undefined} addonAction
+             * @memberof proto.Message.AddonActionSection
+             * @instance
+             */
+            AddonActionSection.prototype.addonAction = null;
+
+            /**
+             * AddonActionSection primitives.
+             * @member {Array.<proto.Message.AddonActionSection.IPrimitive>} primitives
+             * @memberof proto.Message.AddonActionSection
+             * @instance
+             */
+            AddonActionSection.prototype.primitives = $util.emptyArray;
+
+            // OneOf field names bound to virtual getters and setters
+            let $oneOfFields;
+
+            /**
+             * AddonActionSection _addonAction.
+             * @member {"addonAction"|undefined} _addonAction
+             * @memberof proto.Message.AddonActionSection
+             * @instance
+             */
+            Object.defineProperty(AddonActionSection.prototype, "_addonAction", {
+                get: $util.oneOfGetter($oneOfFields = ["addonAction"]),
+                set: $util.oneOfSetter($oneOfFields)
+            });
+
+            /**
+             * Creates a new AddonActionSection instance using the specified properties.
+             * @function create
+             * @memberof proto.Message.AddonActionSection
+             * @static
+             * @param {proto.Message.IAddonActionSection=} [properties] Properties to set
+             * @returns {proto.Message.AddonActionSection} AddonActionSection instance
+             */
+            AddonActionSection.create = function create(properties) {
+                return new AddonActionSection(properties);
+            };
+
+            /**
+             * Encodes the specified AddonActionSection message. Does not implicitly {@link proto.Message.AddonActionSection.verify|verify} messages.
+             * @function encode
+             * @memberof proto.Message.AddonActionSection
+             * @static
+             * @param {proto.Message.IAddonActionSection} message AddonActionSection message or plain object to encode
+             * @param {$protobufRuntime.Writer} [writer] Writer to encode to
+             * @returns {$protobufRuntime.Writer} Writer
+             */
+            AddonActionSection.encode = function encode(message, writer) {
+                if (!writer)
+                    writer = $Writer.create();
+                if (message.addonAction != null && Object.hasOwnProperty.call(message, "addonAction"))
+                    $root.proto.Message.AddonActionSection.AddonAction.encode(message.addonAction, writer.uint32(/* id 1, wireType 2 =*/10).fork()).ldelim();
+                if (message.primitives != null && message.primitives.length)
+                    for (let i = 0; i < message.primitives.length; ++i)
+                        $root.proto.Message.AddonActionSection.Primitive.encode(message.primitives[i], writer.uint32(/* id 2, wireType 2 =*/18).fork()).ldelim();
+                return writer;
+            };
+
+            /**
+             * Encodes the specified AddonActionSection message, length delimited. Does not implicitly {@link proto.Message.AddonActionSection.verify|verify} messages.
+             * @function encodeDelimited
+             * @memberof proto.Message.AddonActionSection
+             * @static
+             * @param {proto.Message.IAddonActionSection} message AddonActionSection message or plain object to encode
+             * @param {$protobufRuntime.Writer} [writer] Writer to encode to
+             * @returns {$protobufRuntime.Writer} Writer
+             */
+            AddonActionSection.encodeDelimited = function encodeDelimited(message, writer) {
+                return this.encode(message, writer).ldelim();
+            };
+
+            /**
+             * Decodes an AddonActionSection message from the specified reader or buffer.
+             * @function decode
+             * @memberof proto.Message.AddonActionSection
+             * @static
+             * @param {$protobufRuntime.Reader|Uint8Array} reader Reader or buffer to decode from
+             * @param {number} [length] Message length if known beforehand
+             * @returns {proto.Message.AddonActionSection} AddonActionSection
+             * @throws {Error} If the payload is not a reader or valid buffer
+             * @throws {$protobufRuntime.util.ProtocolError} If required fields are missing
+             */
+            AddonActionSection.decode = function decode(reader, length, error, long) {
+                if (!(reader instanceof $Reader))
+                    reader = $Reader.create(reader);
+                if (long === undefined)
+                    long = 0;
+                if (long > $Reader.recursionLimit)
+                    throw Error("maximum nesting depth exceeded");
+                let end = length === undefined ? reader.len : reader.pos + length, message = new $root.proto.Message.AddonActionSection();
+                while (reader.pos < end) {
+                    let tag = reader.uint32();
+                    if (tag === error)
+                        break;
+                    switch (tag >>> 3) {
+                    case 1: {
+                            message.addonAction = $root.proto.Message.AddonActionSection.AddonAction.decode(reader, reader.uint32(), undefined, long + 1);
+                            break;
+                        }
+                    case 2: {
+                            if (!(message.primitives && message.primitives.length))
+                                message.primitives = [];
+                            message.primitives.push($root.proto.Message.AddonActionSection.Primitive.decode(reader, reader.uint32(), undefined, long + 1));
+                            break;
+                        }
+                    default:
+                        reader.skipType(tag & 7, long);
+                        break;
+                    }
+                }
+                return message;
+            };
+
+            /**
+             * Decodes an AddonActionSection message from the specified reader or buffer, length delimited.
+             * @function decodeDelimited
+             * @memberof proto.Message.AddonActionSection
+             * @static
+             * @param {$protobufRuntime.Reader|Uint8Array} reader Reader or buffer to decode from
+             * @returns {proto.Message.AddonActionSection} AddonActionSection
+             * @throws {Error} If the payload is not a reader or valid buffer
+             * @throws {$protobufRuntime.util.ProtocolError} If required fields are missing
+             */
+            AddonActionSection.decodeDelimited = function decodeDelimited(reader) {
+                if (!(reader instanceof $Reader))
+                    reader = new $Reader(reader);
+                return this.decode(reader, reader.uint32());
+            };
+
+            /**
+             * Verifies an AddonActionSection message.
+             * @function verify
+             * @memberof proto.Message.AddonActionSection
+             * @static
+             * @param {Object.<string,*>} message Plain object to verify
+             * @returns {string|null} `null` if valid, otherwise the reason why it is not
+             */
+            AddonActionSection.verify = function verify(message, long) {
+                if (typeof message !== "object" || message === null)
+                    return "object expected";
+                if (long === undefined)
+                    long = 0;
+                if (long > $util.recursionLimit)
+                    return "maximum nesting depth exceeded";
+                let properties = {};
+                if (message.addonAction != null && message.hasOwnProperty("addonAction")) {
+                    properties._addonAction = 1;
+                    {
+                        let error = $root.proto.Message.AddonActionSection.AddonAction.verify(message.addonAction, long + 1);
+                        if (error)
+                            return "addonAction." + error;
+                    }
+                }
+                if (message.primitives != null && message.hasOwnProperty("primitives")) {
+                    if (!Array.isArray(message.primitives))
+                        return "primitives: array expected";
+                    for (let i = 0; i < message.primitives.length; ++i) {
+                        let error = $root.proto.Message.AddonActionSection.Primitive.verify(message.primitives[i], long + 1);
+                        if (error)
+                            return "primitives." + error;
+                    }
+                }
+                return null;
+            };
+
+            /**
+             * Creates an AddonActionSection message from a plain object. Also converts values to their respective internal types.
+             * @function fromObject
+             * @memberof proto.Message.AddonActionSection
+             * @static
+             * @param {Object.<string,*>} object Plain object
+             * @returns {proto.Message.AddonActionSection} AddonActionSection
+             */
+            AddonActionSection.fromObject = function fromObject(object, long) {
+                if (object instanceof $root.proto.Message.AddonActionSection)
+                    return object;
+                if (long === undefined)
+                    long = 0;
+                if (long > $util.recursionLimit)
+                    throw Error("maximum nesting depth exceeded");
+                let message = new $root.proto.Message.AddonActionSection();
+                if (object.addonAction != null) {
+                    if (typeof object.addonAction !== "object")
+                        throw TypeError(".proto.Message.AddonActionSection.addonAction: object expected");
+                    message.addonAction = $root.proto.Message.AddonActionSection.AddonAction.fromObject(object.addonAction, long + 1);
+                }
+                if (object.primitives) {
+                    if (!Array.isArray(object.primitives))
+                        throw TypeError(".proto.Message.AddonActionSection.primitives: array expected");
+                    message.primitives = [];
+                    for (let i = 0; i < object.primitives.length; ++i) {
+                        if (typeof object.primitives[i] !== "object")
+                            throw TypeError(".proto.Message.AddonActionSection.primitives: object expected");
+                        message.primitives[i] = $root.proto.Message.AddonActionSection.Primitive.fromObject(object.primitives[i], long + 1);
+                    }
+                }
+                return message;
+            };
+
+            /**
+             * Creates a plain object from an AddonActionSection message. Also converts values to other types if specified.
+             * @function toObject
+             * @memberof proto.Message.AddonActionSection
+             * @static
+             * @param {proto.Message.AddonActionSection} message AddonActionSection
+             * @param {$protobufRuntime.IConversionOptions} [options] Conversion options
+             * @returns {Object.<string,*>} Plain object
+             */
+            AddonActionSection.toObject = function toObject(message, options) {
+                if (!options)
+                    options = {};
+                let object = {};
+                if (options.arrays || options.defaults)
+                    object.primitives = [];
+                if (message.addonAction != null && message.hasOwnProperty("addonAction")) {
+                    object.addonAction = $root.proto.Message.AddonActionSection.AddonAction.toObject(message.addonAction, options);
+                    if (options.oneofs)
+                        object._addonAction = "addonAction";
+                }
+                if (message.primitives && message.primitives.length) {
+                    object.primitives = [];
+                    for (let j = 0; j < message.primitives.length; ++j)
+                        object.primitives[j] = $root.proto.Message.AddonActionSection.Primitive.toObject(message.primitives[j], options);
+                }
+                return object;
+            };
+
+            /**
+             * Converts this AddonActionSection to JSON.
+             * @function toJSON
+             * @memberof proto.Message.AddonActionSection
+             * @instance
+             * @returns {Object.<string,*>} JSON object
+             */
+            AddonActionSection.prototype.toJSON = function toJSON() {
+                return this.constructor.toObject(this, $protobufRuntime.util.toJSONOptions);
+            };
+
+            /**
+             * Gets the default type url for AddonActionSection
+             * @function getTypeUrl
+             * @memberof proto.Message.AddonActionSection
+             * @static
+             * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+             * @returns {string} The default type url
+             */
+            AddonActionSection.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+                if (typeUrlPrefix === undefined) {
+                    typeUrlPrefix = "type.googleapis.com";
+                }
+                return typeUrlPrefix + "/proto.Message.AddonActionSection";
+            };
+
+            AddonActionSection.AddonAction = (function() {
+
+                /**
+                 * Properties of an AddonAction.
+                 * @memberof proto.Message.AddonActionSection
+                 * @interface IAddonAction
+                 */
+
+                /**
+                 * Constructs a new AddonAction.
+                 * @memberof proto.Message.AddonActionSection
+                 * @classdesc Represents an AddonAction.
+                 * @implements IAddonAction
+                 * @constructor
+                 * @param {proto.Message.AddonActionSection.IAddonAction=} [properties] Properties to set
+                 */
+                function AddonAction(properties) {
+                    if (properties)
+                        for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
+                                this[keys[i]] = properties[keys[i]];
+                }
+
+                /**
+                 * Creates a new AddonAction instance using the specified properties.
+                 * @function create
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @static
+                 * @param {proto.Message.AddonActionSection.IAddonAction=} [properties] Properties to set
+                 * @returns {proto.Message.AddonActionSection.AddonAction} AddonAction instance
+                 */
+                AddonAction.create = function create(properties) {
+                    return new AddonAction(properties);
+                };
+
+                /**
+                 * Encodes the specified AddonAction message. Does not implicitly {@link proto.Message.AddonActionSection.AddonAction.verify|verify} messages.
+                 * @function encode
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @static
+                 * @param {proto.Message.AddonActionSection.IAddonAction} message AddonAction message or plain object to encode
+                 * @param {$protobufRuntime.Writer} [writer] Writer to encode to
+                 * @returns {$protobufRuntime.Writer} Writer
+                 */
+                AddonAction.encode = function encode(message, writer) {
+                    if (!writer)
+                        writer = $Writer.create();
+                    return writer;
+                };
+
+                /**
+                 * Encodes the specified AddonAction message, length delimited. Does not implicitly {@link proto.Message.AddonActionSection.AddonAction.verify|verify} messages.
+                 * @function encodeDelimited
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @static
+                 * @param {proto.Message.AddonActionSection.IAddonAction} message AddonAction message or plain object to encode
+                 * @param {$protobufRuntime.Writer} [writer] Writer to encode to
+                 * @returns {$protobufRuntime.Writer} Writer
+                 */
+                AddonAction.encodeDelimited = function encodeDelimited(message, writer) {
+                    return this.encode(message, writer).ldelim();
+                };
+
+                /**
+                 * Decodes an AddonAction message from the specified reader or buffer.
+                 * @function decode
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @static
+                 * @param {$protobufRuntime.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @param {number} [length] Message length if known beforehand
+                 * @returns {proto.Message.AddonActionSection.AddonAction} AddonAction
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobufRuntime.util.ProtocolError} If required fields are missing
+                 */
+                AddonAction.decode = function decode(reader, length, error, long) {
+                    if (!(reader instanceof $Reader))
+                        reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
+                    let end = length === undefined ? reader.len : reader.pos + length, message = new $root.proto.Message.AddonActionSection.AddonAction();
+                    while (reader.pos < end) {
+                        let tag = reader.uint32();
+                        if (tag === error)
+                            break;
+                        switch (tag >>> 3) {
+                        default:
+                            reader.skipType(tag & 7, long);
+                            break;
+                        }
+                    }
+                    return message;
+                };
+
+                /**
+                 * Decodes an AddonAction message from the specified reader or buffer, length delimited.
+                 * @function decodeDelimited
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @static
+                 * @param {$protobufRuntime.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @returns {proto.Message.AddonActionSection.AddonAction} AddonAction
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobufRuntime.util.ProtocolError} If required fields are missing
+                 */
+                AddonAction.decodeDelimited = function decodeDelimited(reader) {
+                    if (!(reader instanceof $Reader))
+                        reader = new $Reader(reader);
+                    return this.decode(reader, reader.uint32());
+                };
+
+                /**
+                 * Verifies an AddonAction message.
+                 * @function verify
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @static
+                 * @param {Object.<string,*>} message Plain object to verify
+                 * @returns {string|null} `null` if valid, otherwise the reason why it is not
+                 */
+                AddonAction.verify = function verify(message, long) {
+                    if (typeof message !== "object" || message === null)
+                        return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
+                    return null;
+                };
+
+                /**
+                 * Creates an AddonAction message from a plain object. Also converts values to their respective internal types.
+                 * @function fromObject
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @static
+                 * @param {Object.<string,*>} object Plain object
+                 * @returns {proto.Message.AddonActionSection.AddonAction} AddonAction
+                 */
+                AddonAction.fromObject = function fromObject(object, long) {
+                    if (object instanceof $root.proto.Message.AddonActionSection.AddonAction)
+                        return object;
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
+                    return new $root.proto.Message.AddonActionSection.AddonAction();
+                };
+
+                /**
+                 * Creates a plain object from an AddonAction message. Also converts values to other types if specified.
+                 * @function toObject
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @static
+                 * @param {proto.Message.AddonActionSection.AddonAction} message AddonAction
+                 * @param {$protobufRuntime.IConversionOptions} [options] Conversion options
+                 * @returns {Object.<string,*>} Plain object
+                 */
+                AddonAction.toObject = function toObject() {
+                    return {};
+                };
+
+                /**
+                 * Converts this AddonAction to JSON.
+                 * @function toJSON
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @instance
+                 * @returns {Object.<string,*>} JSON object
+                 */
+                AddonAction.prototype.toJSON = function toJSON() {
+                    return this.constructor.toObject(this, $protobufRuntime.util.toJSONOptions);
+                };
+
+                /**
+                 * Gets the default type url for AddonAction
+                 * @function getTypeUrl
+                 * @memberof proto.Message.AddonActionSection.AddonAction
+                 * @static
+                 * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns {string} The default type url
+                 */
+                AddonAction.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+                    if (typeUrlPrefix === undefined) {
+                        typeUrlPrefix = "type.googleapis.com";
+                    }
+                    return typeUrlPrefix + "/proto.Message.AddonActionSection.AddonAction";
+                };
+
+                return AddonAction;
+            })();
+
+            AddonActionSection.Primitive = (function() {
+
+                /**
+                 * Properties of a Primitive.
+                 * @memberof proto.Message.AddonActionSection
+                 * @interface IPrimitive
+                 */
+
+                /**
+                 * Constructs a new Primitive.
+                 * @memberof proto.Message.AddonActionSection
+                 * @classdesc Represents a Primitive.
+                 * @implements IPrimitive
+                 * @constructor
+                 * @param {proto.Message.AddonActionSection.IPrimitive=} [properties] Properties to set
+                 */
+                function Primitive(properties) {
+                    if (properties)
+                        for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                            if (properties[keys[i]] != null && keys[i] !== "__proto__")
+                                this[keys[i]] = properties[keys[i]];
+                }
+
+                /**
+                 * Creates a new Primitive instance using the specified properties.
+                 * @function create
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @static
+                 * @param {proto.Message.AddonActionSection.IPrimitive=} [properties] Properties to set
+                 * @returns {proto.Message.AddonActionSection.Primitive} Primitive instance
+                 */
+                Primitive.create = function create(properties) {
+                    return new Primitive(properties);
+                };
+
+                /**
+                 * Encodes the specified Primitive message. Does not implicitly {@link proto.Message.AddonActionSection.Primitive.verify|verify} messages.
+                 * @function encode
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @static
+                 * @param {proto.Message.AddonActionSection.IPrimitive} message Primitive message or plain object to encode
+                 * @param {$protobufRuntime.Writer} [writer] Writer to encode to
+                 * @returns {$protobufRuntime.Writer} Writer
+                 */
+                Primitive.encode = function encode(message, writer) {
+                    if (!writer)
+                        writer = $Writer.create();
+                    return writer;
+                };
+
+                /**
+                 * Encodes the specified Primitive message, length delimited. Does not implicitly {@link proto.Message.AddonActionSection.Primitive.verify|verify} messages.
+                 * @function encodeDelimited
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @static
+                 * @param {proto.Message.AddonActionSection.IPrimitive} message Primitive message or plain object to encode
+                 * @param {$protobufRuntime.Writer} [writer] Writer to encode to
+                 * @returns {$protobufRuntime.Writer} Writer
+                 */
+                Primitive.encodeDelimited = function encodeDelimited(message, writer) {
+                    return this.encode(message, writer).ldelim();
+                };
+
+                /**
+                 * Decodes a Primitive message from the specified reader or buffer.
+                 * @function decode
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @static
+                 * @param {$protobufRuntime.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @param {number} [length] Message length if known beforehand
+                 * @returns {proto.Message.AddonActionSection.Primitive} Primitive
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobufRuntime.util.ProtocolError} If required fields are missing
+                 */
+                Primitive.decode = function decode(reader, length, error, long) {
+                    if (!(reader instanceof $Reader))
+                        reader = $Reader.create(reader);
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $Reader.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
+                    let end = length === undefined ? reader.len : reader.pos + length, message = new $root.proto.Message.AddonActionSection.Primitive();
+                    while (reader.pos < end) {
+                        let tag = reader.uint32();
+                        if (tag === error)
+                            break;
+                        switch (tag >>> 3) {
+                        default:
+                            reader.skipType(tag & 7, long);
+                            break;
+                        }
+                    }
+                    return message;
+                };
+
+                /**
+                 * Decodes a Primitive message from the specified reader or buffer, length delimited.
+                 * @function decodeDelimited
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @static
+                 * @param {$protobufRuntime.Reader|Uint8Array} reader Reader or buffer to decode from
+                 * @returns {proto.Message.AddonActionSection.Primitive} Primitive
+                 * @throws {Error} If the payload is not a reader or valid buffer
+                 * @throws {$protobufRuntime.util.ProtocolError} If required fields are missing
+                 */
+                Primitive.decodeDelimited = function decodeDelimited(reader) {
+                    if (!(reader instanceof $Reader))
+                        reader = new $Reader(reader);
+                    return this.decode(reader, reader.uint32());
+                };
+
+                /**
+                 * Verifies a Primitive message.
+                 * @function verify
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @static
+                 * @param {Object.<string,*>} message Plain object to verify
+                 * @returns {string|null} `null` if valid, otherwise the reason why it is not
+                 */
+                Primitive.verify = function verify(message, long) {
+                    if (typeof message !== "object" || message === null)
+                        return "object expected";
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        return "maximum nesting depth exceeded";
+                    return null;
+                };
+
+                /**
+                 * Creates a Primitive message from a plain object. Also converts values to their respective internal types.
+                 * @function fromObject
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @static
+                 * @param {Object.<string,*>} object Plain object
+                 * @returns {proto.Message.AddonActionSection.Primitive} Primitive
+                 */
+                Primitive.fromObject = function fromObject(object, long) {
+                    if (object instanceof $root.proto.Message.AddonActionSection.Primitive)
+                        return object;
+                    if (long === undefined)
+                        long = 0;
+                    if (long > $util.recursionLimit)
+                        throw Error("maximum nesting depth exceeded");
+                    return new $root.proto.Message.AddonActionSection.Primitive();
+                };
+
+                /**
+                 * Creates a plain object from a Primitive message. Also converts values to other types if specified.
+                 * @function toObject
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @static
+                 * @param {proto.Message.AddonActionSection.Primitive} message Primitive
+                 * @param {$protobufRuntime.IConversionOptions} [options] Conversion options
+                 * @returns {Object.<string,*>} Plain object
+                 */
+                Primitive.toObject = function toObject() {
+                    return {};
+                };
+
+                /**
+                 * Converts this Primitive to JSON.
+                 * @function toJSON
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @instance
+                 * @returns {Object.<string,*>} JSON object
+                 */
+                Primitive.prototype.toJSON = function toJSON() {
+                    return this.constructor.toObject(this, $protobufRuntime.util.toJSONOptions);
+                };
+
+                /**
+                 * Gets the default type url for Primitive
+                 * @function getTypeUrl
+                 * @memberof proto.Message.AddonActionSection.Primitive
+                 * @static
+                 * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+                 * @returns {string} The default type url
+                 */
+                Primitive.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+                    if (typeUrlPrefix === undefined) {
+                        typeUrlPrefix = "type.googleapis.com";
+                    }
+                    return typeUrlPrefix + "/proto.Message.AddonActionSection.Primitive";
+                };
+
+                return Primitive;
+            })();
+
+            return AddonActionSection;
+        })();
 
         Message.AlbumMessage = (function() {
 
