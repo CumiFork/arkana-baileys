@@ -1,11 +1,23 @@
 import type { EventEmitter } from 'events';
 export type LidResolver = {
     resolve: (jid: string) => string;
-    learn: (lid: unknown, pn: unknown) => void;
+    resolveJid: (jid: string) => string;
+    toPn: (jid: string) => string;
+    toLid: (jid: string) => string;
+    getPn: (lid: string) => string;
+    getLid: (pn: string) => string;
+    learn: (lid: unknown, pn: unknown) => boolean;
+    load: () => number;
+    flush: () => boolean;
+    readonly persistPath: string | null;
     observeContacts: (contacts: unknown[] | undefined) => void;
     observeChats: (chats: unknown[] | undefined) => void;
     observeMessages: (payload: unknown) => void;
+    observeHistory: (payload: unknown) => void;
+    observeGroup: (payload: unknown) => void;
     attach: () => void;
+    lidToPn: Map<string, string>;
+    pnToLid: Map<string, string>;
     readonly size: number;
     entries: () => [string, string][];
 };
@@ -13,4 +25,7 @@ export declare const createLidResolver: (deps?: {
     ev?: EventEmitter;
     getOwnJid?: () => string | undefined;
     logger?: unknown;
+    persistPath?: string;
+    persistDir?: string;
+    debounceMs?: number;
 }) => LidResolver;

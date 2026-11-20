@@ -10,7 +10,7 @@ async function connect() {
   const { state, saveCreds } = await useMultiFileAuthState('./auth')
   const { version } = await fetchLatestBaileysVersion()
 
-  const sock = makeWASocket({ version, auth: state })
+  const sock = makeWASocket({ version, auth: state, lidMappingDir: './auth' })
 
   sock.ev.on('creds.update', saveCreds)
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
@@ -30,6 +30,8 @@ function inspectResolver(sock) {
 
   console.log('PN -> LID:', pnToLid)
   console.log('LID -> PN:', lidToPn)
+  console.log('getLid:', sock.getLid(DEMO_JID))
+  console.log('getPn:', sock.getPn('123456@lid'))
   console.log('Map ukuran:', sock.lidToPn.size, sock.pnToLid.size)
 }
 

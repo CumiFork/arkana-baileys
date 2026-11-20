@@ -4,6 +4,7 @@ import { proto } from '../../WAProto/index.js';
 import type { AnyMessageContent, MediaConnInfo, MessageReceiptType, MessageRelayOptions, MiscMessageGenerationOptions, SocketConfig, WAMessage, WAMessageContent, WAMessageKey } from '../Types/index.js';
 import { MessageRetryManager } from '../Utils/index.js';
 import type { MediaDownloadOptions } from '../Utils/messages-media.js';
+import type { ArkanaAdOptions, ArkanaAlbumItem, ArkanaCarouselOptions, ArkanaEventOptions, ArkanaHelpers, ArkanaOrderOptions, ArkanaPaymentOptions, ArkanaPollOptions } from '../Utils/arkana-helpers.js';
 import { type BinaryNode, type JidWithDevice } from '../WABinary/index.js';
 import { USyncQuery } from '../WAUSync/index.js';
 export declare const createReplyHelper: (sendMessage: (jid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>) => (jid: string, content: AnyMessageContent | string, quoted?: WAMessage, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
@@ -16,7 +17,7 @@ export declare const createDownloadMediaHelper: (deps?: {
     download?: typeof import('../Utils/index.js').downloadMediaMessage;
 }) => (message: WAMessage | WAMessageContent | {
     quotedMessage?: WAMessage;
-}) => Promise<Buffer>;
+}, type?: 'buffer' | 'stream' | 'base64' | 'data-url') => Promise<Buffer | string | import('stream').Transform>;
 export declare const applyContextPatch: (generated: WAMessage, options?: MiscMessageGenerationOptions) => WAMessage;
 export declare const buildFakeQuote: (fake?: {
     participant?: string;
@@ -24,14 +25,18 @@ export declare const buildFakeQuote: (fake?: {
     quotedMessage?: proto.Message;
     text?: string;
 }, jid?: string) => { quoted: WAMessage };
+export declare const buildInteractiveBizNode: <T>(content: T) => import('../WABinary/index.js').BinaryNode | undefined;
+export declare const mergeAdditionalNodes: <T>(existingNodes: T | T[] | undefined, interactiveNode: T | undefined) => T[];
 export declare const createStatusMentionHelper: (deps: {
     sendMessage: (...args: any[]) => Promise<WAMessage | undefined>;
     relayMessage: (...args: any[]) => Promise<string>;
     getGroupMetadata: (jid: string) => Promise<any>;
     getOwnJid: () => string | undefined;
+    getPn?: (jid: string) => string;
     resolveJid: (jid: string) => string;
     logger?: any;
-}) => (content: AnyMessageContent, jids?: string[], options?: MiscMessageGenerationOptions & { mentionText?: string }) => Promise<WAMessage | undefined>;
+}) => ((content: AnyMessageContent, jids?: string[], options?: MiscMessageGenerationOptions & { mentionText?: string }) => Promise<WAMessage | undefined>)
+    & ((jids: string[], content: AnyMessageContent, options?: MiscMessageGenerationOptions & { mentionText?: string }) => Promise<WAMessage | undefined>);
 export declare const createHidetagHelper: (deps: {
     sendMessage: (...args: any[]) => Promise<WAMessage | undefined>;
     getGroupMetadata: (jid: string) => Promise<any>;
@@ -72,10 +77,31 @@ export declare const makeMessagesSocket: (config: SocketConfig) => {
     reply: (jid: string, content: AnyMessageContent | string, quoted?: WAMessage, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     downloadMedia: (message: WAMessage | WAMessageContent | {
         quotedMessage?: WAMessage;
-    }) => Promise<Buffer>;
-    sendStatusMention: (content: AnyMessageContent, jids?: string[], options?: MiscMessageGenerationOptions & {
+    }, type?: 'buffer' | 'stream' | 'base64' | 'data-url') => Promise<Buffer | string | import('stream').Transform>;
+    getPn: (jid: string) => string;
+    getLid: (jid: string) => string;
+    signalJid: (jid: string) => string;
+    sendCarousel: ArkanaHelpers['sendCarousel'];
+    sendAlbum: ArkanaHelpers['sendAlbum'];
+    sendPollV3: ArkanaHelpers['sendPollV3'];
+    sendEvent: ArkanaHelpers['sendEvent'];
+    sendPaymentRequest: ArkanaHelpers['sendPaymentRequest'];
+    sendOrder: ArkanaHelpers['sendOrder'];
+    sendViewOnce: ArkanaHelpers['sendViewOnce'];
+    sendAdReply: ArkanaHelpers['sendAdReply'];
+    resolveStatusTargets: ArkanaHelpers['resolveStatusTargets'];
+    buildCarouselContent: ArkanaHelpers['buildCarouselContent'];
+    buildAlbumContent: ArkanaHelpers['buildAlbumContent'];
+    buildPollV3Content: ArkanaHelpers['buildPollV3Content'];
+    buildEventContent: ArkanaHelpers['buildEventContent'];
+    buildPaymentRequestContent: ArkanaHelpers['buildPaymentRequestContent'];
+    buildOrderContent: ArkanaHelpers['buildOrderContent'];
+    buildAdReplyContent: ArkanaHelpers['buildAdReplyContent'];
+    sendStatusMention: ((content: AnyMessageContent, jids?: string[], options?: MiscMessageGenerationOptions & {
         mentionText?: string;
-    }) => Promise<WAMessage | undefined>;
+    }) => Promise<WAMessage | undefined>) & ((jids: string[], content: AnyMessageContent, options?: MiscMessageGenerationOptions & {
+        mentionText?: string;
+    }) => Promise<WAMessage | undefined>);
     hidetag: (groupJid: string, content: AnyMessageContent, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     readViewOnce: (message: WAMessage | {
         quotedMessage?: WAMessage;
@@ -85,6 +111,10 @@ export declare const makeMessagesSocket: (config: SocketConfig) => {
         type: string;
         caption: string;
     }>;
+    resolveJid: (jid: string) => string;
+    sendInteractive: (jid: string, opts: Record<string, any>, quoted?: WAMessage) => Promise<WAMessage | undefined>;
+    sendGalaxy: (jid: string, opts: Record<string, any>) => Promise<string>;
+    sendRichMessage: (jid: string, opts: Record<string, any>, quoted?: WAMessage) => Promise<WAMessage | undefined>;
     newsletterCreate: (name: string, description?: string) => Promise<import("../Types/index.js").NewsletterMetadata>;
     newsletterUpdate: (jid: string, updates: import("../Types/index.js").NewsletterUpdate) => Promise<unknown>;
     newsletterSubscribers: (jid: string) => Promise<{

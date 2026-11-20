@@ -7,6 +7,7 @@ import { WebSocketClient } from './Client/index.js';
 
 export declare const MESSAGE_WRAPPER_KEYS: readonly string[];
 export declare const unwrapMessageContent: <T>(content: T) => T;
+export declare const sanitizeJid: (jid: string) => string;
 export type SocketMessageHelpers = {
     reply: (jid: string, content: AnyMessageContent | string, quoted?: WAMessage, options?: MiscMessageGenerationOptions) => Promise<WAMessage | undefined>;
     downloadMedia: (message: WAMessage | WAMessageContent | {

@@ -17,6 +17,7 @@ export * from './process-message.js';
 export * from './message-retry-manager.js';
 export * from './message-store.js';
 export * from './lid-resolver.js';
+export * from './arkana-helpers.js';
 export * from './browser-utils.js';
 export * from './companion-reg-client-utils.js';
 export * from './identity-change-handler.js';

@@ -11,6 +11,8 @@ export type WAMessage = proto.IWebMessageInfo & {
     messageStubParameters?: any;
     category?: string;
     retryCount?: number;
+    senderPn?: string;
+    senderLid?: string;
 };
 export type WAMessageContent = proto.IMessage;
 export type WAContactMessage = proto.Message.IContactMessage;
