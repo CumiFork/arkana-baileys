@@ -192,11 +192,17 @@ void SetupImgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    int(*get_width)(void*);
-    int(*get_height)(void*);
-    get_width = (int (*)(void*)) Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Screen", "get_width", 0);
-    get_height = (int (*)(void*)) Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Screen", "get_height", 0);
-	io.DisplaySize = ImVec2((float)get_width(0), (float)get_height(0));
+    int (*get_width)(void *) = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Screen", "get_width", 0);
+    if (!get_width) get_width = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Screen", "get_width", 0);
+    int (*get_height)(void *) = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Screen", "get_height", 0);
+    if (!get_height) get_height = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Screen", "get_height", 0);
+    if (get_width && get_height) {
+        io.DisplaySize = ImVec2((float)get_width(0), (float)get_height(0));
+    } else if (screenWidth > 0 && screenHeight > 0) {
+        io.DisplaySize = ImVec2((float)screenWidth, (float)screenHeight);
+    } else {
+        io.DisplaySize = ImVec2(1080.0f, 2400.0f);
+    }
 	ImGui::StyleColorsDark(); // Set a theme
 	ImGuiStyle *style = &ImGui::GetStyle();
 	
