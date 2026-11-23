@@ -260,8 +260,13 @@ struct UnityEngine_Touch_Fields {
 };
 
 
+static volatile bool g_il2cpp_ready = false;
+
 EGLBoolean (*old_eglSwapBuffers)(EGLDisplay dpy, EGLSurface surface);
 EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
+    if (!g_il2cpp_ready) {
+        return old_eglSwapBuffers(dpy, surface);
+    }
 	
     static bool is_setup = false;
     static bool should_clear_mouse_pos = false;
@@ -347,6 +352,7 @@ void *hack_thread(void*) {
     DobbyHook((void *)getAbsoluteAddress("libil2cpp.so", 0x74BB99C), (void *) &my_RecoilGetDelta, (void **) &orig_RecoilGetDelta);
 	
     Il2CppAttach("libil2cpp.so");
+    g_il2cpp_ready = true;
     sleep(5);
 	
 	/*
