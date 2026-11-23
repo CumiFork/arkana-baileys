@@ -1,4 +1,4 @@
-name: Build Projek APK
+name: Build Projek
 
 on:
   push:
@@ -31,8 +31,45 @@ jobs:
         run: |
           $ANDROID_HOME/ndk/22.0.7026061/ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk NDK_APPLICATION_MK=jni/Application.mk
 
+      - name: Build injector
+        run: |
+          CC="$ANDROID_HOME/ndk/22.0.7026061/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+          $CC -Wall -Wextra -O2 -ldl -o projek/inject projek/inject.c
+
+      - name: Package Termux installer
+        run: |
+          set -e
+          OUT=projek/libMEOW-termux.sh
+          PAYLOAD=$(mktemp)
+          tar -C projek -czf "$PAYLOAD" libMEOW.so inject libMEOW.sh
+          # ensure libMEOW.so from build is used
+          cp projek/src/main/libs/arm64-v8a/libMEOW.so projek/libMEOW.so
+          tar -C projek -czf "$PAYLOAD" libMEOW.so inject libMEOW.sh
+          B64=$(base64 -w0 "$PAYLOAD")
+          cat > "$OUT" <<'HDR'
+#!/system/bin/sh
+# libMEOW Termux installer - extracts libMEOW.so, inject, libMEOW.sh
+set -e
+DIR="${1:-$HOME/libMEOW}"
+mkdir -p "$DIR"
+HDR
+          printf "B64='%s'\n" "$B64" >> "$OUT"
+          cat >> "$OUT" <<'FTR'
+echo "$B64" | base64 -d | tar -xz -C "$DIR"
+chmod +x "$DIR/libMEOW.sh" "$DIR/inject" "$DIR/libMEOW.so" 2>/dev/null || true
+echo "[+] Extracted to $DIR"
+echo "[*] Jalankan: sh $DIR/libMEOW.sh com.dts.freefireth"
+FTR
+          chmod +x "$OUT"
+
       - name: Upload libMEOW.so
         uses: actions/upload-artifact@v4
         with:
           name: projek-libMEOW
           path: projek/src/main/libs/arm64-v8a/libMEOW.so
+
+      - name: Upload Termux installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: libMEOW-termux
+          path: projek/libMEOW-termux.sh

@@ -125,13 +125,20 @@ Il2CppString *Il2CppString::CreateMonoString(const wchar_t *s, int len) {
 }
 // =========================================================================== //
 void *Il2CppGetImageByName(const char *image) {
-    size_t size;
-    void **assemblies = il2cpp_domain_get_assemblies(il2cpp_domain_get(), &size);
-    for(int i = 0; i < size; ++i) {
+    if (!il2cpp_domain_get || !il2cpp_domain_get_assemblies || !il2cpp_assembly_get_image || !il2cpp_image_get_name) {
+        IL2CPP_LOGE("IL2CPP API not ready for image %s", image);
+        return 0;
+    }
+    size_t size = 0;
+    void *domain = il2cpp_domain_get();
+    if (!domain) return 0;
+    void **assemblies = il2cpp_domain_get_assemblies(domain, &size);
+    if (!assemblies || size == 0) return 0;
+    for(size_t i = 0; i < size; ++i) {
         void *img = (void *)il2cpp_assembly_get_image(assemblies[i]);
-
+        if (!img) continue;
         const char *img_name = il2cpp_image_get_name(img);
-
+        if (!img_name) continue;
         if(strcmp(img_name, image) == 0) {
             return img;
         }
