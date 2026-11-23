@@ -66,19 +66,10 @@ static const std::vector<AntiDetectPatch> kAntiDetectPatches = {
 };
 
 static std::atomic<int> g_antidetect_applied{-1};
+static pthread_mutex_t g_antidetect_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 bool setup;
 using namespace ImGui;
-
-#define HOOKAF(ret, func, ...) \
-    ret (*orig##func)(__VA_ARGS__); \
-    ret my##func(__VA_ARGS__)
-
-HOOKAF(void, Input, void *thiz, void *ex_ab, void *ex_ac) {
-    origInput(thiz, ex_ab, ex_ac);
-    if (ImGui::GetCurrentContext())
-        ImGui_ImplAndroid_HandleInputEvent((AInputEvent*)thiz);
-}
 
 std::string GetProp(const char* key) {
     char value[PROP_VALUE_MAX];
@@ -128,12 +119,15 @@ static int applyAntiDetectPatches(uintptr_t bias) {
 }
 
 static void reapplyAntiDetect() {
+    pthread_mutex_lock(&g_antidetect_mutex);
     uintptr_t bias = findLibraryBias(OBFUSCATE("libanogs.so"));
     if (!bias) {
         g_antidetect_applied.store(-1);
+        pthread_mutex_unlock(&g_antidetect_mutex);
         return;
     }
     g_antidetect_applied.store(applyAntiDetectPatches(bias));
+    pthread_mutex_unlock(&g_antidetect_mutex);
 }
 
 void *antidetect_thread(void *) {
@@ -280,8 +274,12 @@ void DrawMenu() {
     }
 
     const ImVec2 window_size = ImVec2(500, 420);
+    ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Once);
     ImGui::SetNextWindowSize(window_size, ImGuiCond_Once);
-    ImGui::Begin("IMGUI MODMENU", &showMenu, ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImGui::Begin("IMGUI MODMENU", &showMenu,
+                 ImGuiWindowFlags_NoBringToFrontOnFocus |
+                 ImGuiWindowFlags_NoMove |
+                 ImGuiWindowFlags_NoResize);
 
     ImGui::SeparatorText("Unity <ESP>");
     ImGui::Checkbox("Enable Esp", &esp);
@@ -393,9 +391,14 @@ struct UnityEngine_Touch_Fields {
 };
 
 EGLBoolean (*old_eglSwapBuffers)(EGLDisplay dpy, EGLSurface surface);
+
+static EGLBoolean callOldSwap(EGLDisplay dpy, EGLSurface surface) {
+    return old_eglSwapBuffers ? old_eglSwapBuffers(dpy, surface) : EGL_FALSE;
+}
+
 EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     if (!g_il2cpp_ready) {
-        return old_eglSwapBuffers(dpy, surface);
+        return callOldSwap(dpy, surface);
     }
 	
     static bool is_setup = false;
@@ -408,22 +411,35 @@ EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
 	
     ImGuiIO &io = ImGui::GetIO();
     static int (*TouchCount)(void *) = nullptr;
-    static UnityEngine_Touch_Fields (*GetTouch)(int) = nullptr;
-    static bool touch_resolved = false;
-    if (!touch_resolved) {
+    static UnityEngine_Touch_Fields (*GetTouch)(int, void *) = nullptr;
+    static bool touch_logged = false;
+    if (!TouchCount || !GetTouch) {
         TouchCount = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Input", "get_touchCount", 0);
         if (!TouchCount) TouchCount = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Input", "get_touchCount", 0);
         if (!TouchCount) TouchCount = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.InputLegacyModule.dll", "UnityEngine", "Input", "get_touchCount", 0);
-        GetTouch = (UnityEngine_Touch_Fields (*)(int))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Input", "GetTouch", 1);
-        if (!GetTouch) GetTouch = (UnityEngine_Touch_Fields (*)(int))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Input", "GetTouch", 1);
-        if (!GetTouch) GetTouch = (UnityEngine_Touch_Fields (*)(int))Il2CppGetMethodOffset("UnityEngine.InputLegacyModule.dll", "UnityEngine", "Input", "GetTouch", 1);
-        touch_resolved = TouchCount && GetTouch;
+        GetTouch = (UnityEngine_Touch_Fields (*)(int, void *))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Input", "GetTouch", 1);
+        if (!GetTouch) GetTouch = (UnityEngine_Touch_Fields (*)(int, void *))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Input", "GetTouch", 1);
+        if (!GetTouch) GetTouch = (UnityEngine_Touch_Fields (*)(int, void *))Il2CppGetMethodOffset("UnityEngine.InputLegacyModule.dll", "UnityEngine", "Input", "GetTouch", 1);
+        if (!touch_logged && TouchCount && GetTouch) {
+            __android_log_print(ANDROID_LOG_INFO, "MEOW_INPUT", "touch resolved");
+            touch_logged = true;
+        }
     }
     if (TouchCount && GetTouch) {
         int touchCount = TouchCount(nullptr);
         if (touchCount > 0) {
-            UnityEngine_Touch_Fields touch = GetTouch(0);
+            UnityEngine_Touch_Fields touch = GetTouch(0, nullptr);
             float reverseY = io.DisplaySize.y - touch.m_Position.fields.y;
+
+            static bool touch_coords_logged = false;
+            if (!touch_coords_logged) {
+                __android_log_print(ANDROID_LOG_INFO, "MEOW_INPUT",
+                                    "display=%.0fx%.0f touch=%.1f,%.1f imgui=%.1f,%.1f",
+                                    io.DisplaySize.x, io.DisplaySize.y,
+                                    touch.m_Position.fields.x, touch.m_Position.fields.y,
+                                    touch.m_Position.fields.x, reverseY);
+                touch_coords_logged = true;
+            }
 
             switch (touch.m_Phase) {
                 case TouchPhase::Began:
@@ -457,23 +473,33 @@ EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
         io.MousePos = ImVec2(-1, -1);
         should_clear_mouse_pos = false;
     }
-    return old_eglSwapBuffers(dpy, surface);
+    return callOldSwap(dpy, surface);
 }
 
 
+static void *resolveAndroidSymbol(const char *name) {
+    void *symbol = DobbySymbolResolver(OBFUSCATE("/system/lib64/libandroid.so"), name);
+    if (!symbol) symbol = DobbySymbolResolver(OBFUSCATE("/system/lib/libandroid.so"), name);
+    return symbol;
+}
+
 void *imgui_go(void*) {
     void *handle_egl = xdl_open("libEGL.so", XDL_DEFAULT);
-    void *handle_input = xdl_open("libinput.so", XDL_DEFAULT);
-    
-    void *xdl_sym_egl = xdl_sym(handle_egl, "eglSwapBuffers", nullptr);
-    void *xdl_sym_input = xdl_sym(handle_input, "_ZN7android13InputConsumer21initializeMotionEventEPNS_11MotionEventEPKNS_12InputMessageE", nullptr);
-    
-	DobbyHook(xdl_sym_egl, (void*)hook_eglSwapBuffers, (void**)&old_eglSwapBuffers);
-    DobbyHook(xdl_sym_input, (void*)myInput, (void**)&origInput);
-    
-	DobbyHook((void *) DobbySymbolResolver(OBFUSCATE("/system/lib/libandroid.so"), OBFUSCATE("ANativeWindow_getWidth")), (void *) _ANativeWindow_getWidth, (void **) &orig_ANativeWindow_getWidth);
-	DobbyHook((void *) DobbySymbolResolver(OBFUSCATE("/system/lib/libandroid.so"), OBFUSCATE("ANativeWindow_getHeight")), (void *) _ANativeWindow_getHeight, (void **) &orig_ANativeWindow_getHeight);
-	
+    void *egl_swap = handle_egl ? xdl_sym(handle_egl, "eglSwapBuffers", nullptr) : nullptr;
+    if (egl_swap) {
+        DobbyHook(egl_swap, (void*)hook_eglSwapBuffers, (void**)&old_eglSwapBuffers);
+    }
+
+    void *get_width = resolveAndroidSymbol(OBFUSCATE("ANativeWindow_getWidth"));
+    void *get_height = resolveAndroidSymbol(OBFUSCATE("ANativeWindow_getHeight"));
+    if (get_width) {
+        DobbyHook(get_width, (void *) _ANativeWindow_getWidth, (void **) &orig_ANativeWindow_getWidth);
+    }
+    if (get_height) {
+        DobbyHook(get_height, (void *) _ANativeWindow_getHeight, (void **) &orig_ANativeWindow_getHeight);
+    }
+
+    __android_log_print(ANDROID_LOG_INFO, "MEOW_INPUT", "egl=%d width=%d height=%d", egl_swap != nullptr, get_width != nullptr, get_height != nullptr);
     pthread_exit(nullptr);
 }
 
