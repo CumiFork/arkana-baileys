@@ -51,8 +51,8 @@ using namespace ImGui;
 
 HOOKAF(void, Input, void *thiz, void *ex_ab, void *ex_ac) {
     origInput(thiz, ex_ab, ex_ac);
-    ImGui_ImplAndroid_HandleInputEvent((AInputEvent*)thiz);
-    return;
+    if (ImGui::GetCurrentContext())
+        ImGui_ImplAndroid_HandleInputEvent((AInputEvent*)thiz);
 }
 
 std::string GetProp(const char* key) {
