@@ -138,7 +138,7 @@ static void reapplyAntiDetect() {
 }
 
 void *antidetect_thread(void *) {
-    if (GetProp("meow.antidetect") == "0") return nullptr;
+    if (GetProp("meow.antidetect") != "1") return nullptr;
     int last = -2;
     for (;;) {
         reapplyAntiDetect();
@@ -285,6 +285,7 @@ void DrawMenu() {
         ImGui::Begin("##menu_toggle", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
         if (ImGui::Button("MENU", ImVec2(140, 60))) {
             showMenu = true;
+            __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "open");
         }
         ImGui::End();
         return;
@@ -297,12 +298,29 @@ void DrawMenu() {
                  ImGuiWindowFlags_NoBringToFrontOnFocus |
                  ImGuiWindowFlags_NoResize);
 
+    static bool dragLogged = false;
+    if (ImGui::IsMouseDragging(0) && ImGui::IsWindowHovered()) {
+        if (!dragLogged) {
+            ImVec2 pos = ImGui::GetWindowPos();
+            __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "drag pos=%.0f,%.0f", pos.x, pos.y);
+            dragLogged = true;
+        }
+    } else {
+        dragLogged = false;
+    }
+
     ImGui::SeparatorText("Unity <ESP>");
-    ImGui::Checkbox("Enable Esp", &esp);
-    ImGui::Checkbox("Draw Enemy Box", &drawEnemyBox);
+    if (ImGui::Checkbox("Enable Esp", &esp)) {
+        __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "esp=%d", esp);
+    }
+    if (ImGui::Checkbox("Draw Enemy Box", &drawEnemyBox)) {
+        __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "box=%d", drawEnemyBox);
+    }
 
     ImGui::SeparatorText("Weapon <Features>");
-    ImGui::Checkbox("No Recoil", &noRecoil);
+    if (ImGui::Checkbox("No Recoil", &noRecoil)) {
+        __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "recoil=%d", noRecoil);
+    }
 
     ImGui::SeparatorText("Anti-Detect <libanogs>");
     int applied = g_antidetect_applied.load();
@@ -315,13 +333,18 @@ void DrawMenu() {
     }
     if (ImGui::Button("Reapply Now", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
         reapplyAntiDetect();
+        __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "reapply=%d", g_antidetect_applied.load());
     }
 
     ImGui::SeparatorText("il2cpp <Dumper>");
     if (ImGui::Button("Dump IL2CPP", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+        __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "dump start");
         auto il2cpp_handle = dlopen("libil2cpp.so", 4);
         if (il2cpp_handle) {
             il2cpp_dump(il2cpp_handle);
+            __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "dump done");
+        } else {
+            __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "dump no handle");
         }
     }
 
