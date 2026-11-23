@@ -138,6 +138,7 @@ static void reapplyAntiDetect() {
 }
 
 void *antidetect_thread(void *) {
+    if (GetProp("meow.antidetect") == "0") return nullptr;
     int last = -2;
     for (;;) {
         reapplyAntiDetect();
@@ -485,6 +486,7 @@ static void *resolveAndroidSymbol(const char *name) {
 }
 
 void *imgui_go(void*) {
+    if (GetProp("meow.overlay") == "0") return nullptr;
     void *handle_egl = xdl_open("libEGL.so", XDL_DEFAULT);
     void *egl_swap = handle_egl ? xdl_sym(handle_egl, "eglSwapBuffers", nullptr) : nullptr;
     if (egl_swap) {
@@ -505,6 +507,7 @@ void *imgui_go(void*) {
 }
 
 void *hack_thread(void*) {
+    if (GetProp("meow.il2cpp") == "0") return nullptr;
 	do {
      sleep(1);
     } while (!isLibraryLoaded("libil2cpp.so"));
