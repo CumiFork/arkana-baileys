@@ -12,8 +12,11 @@
 #include <cstring> // for strcmp
 #include <sstream>
 #include <array>
+#include <atomic>
+#include <cstdint>
 #include <unistd.h>
 #include <sys/system_properties.h>
+#include <android/log.h>
 #include <GLES3/gl3.h>
 #include <EGL/egl.h>
 
@@ -42,6 +45,28 @@
 std::vector<MemoryPatch> memoryPatches;
 std::vector<uint64_t> offsetVector;
 
+struct AntiDetectPatch {
+    uint32_t rva;
+    std::vector<uint8_t> original;
+    std::vector<uint8_t> patched;
+};
+
+static const std::vector<AntiDetectPatch> kAntiDetectPatches = {
+    {0x250FF8, {0xfd, 0x7b, 0xbe, 0xa9, 0xf4, 0x4f, 0x01, 0xa9},
+               {0x1f, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6}},
+    {0x2B3DA0, {0x01, 0x02, 0x00, 0xb4, 0xfd, 0x7b, 0xbe, 0xa9},
+               {0x1f, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6}},
+    {0x284420, {0xfd, 0x7b, 0xbe, 0xa9, 0xfc, 0x0b, 0x00, 0xf9},
+               {0xc0, 0x5f, 0xd6, 0x03, 0x1f, 0x20, 0x03, 0xd5}},
+    {0x2B3E08, {0xfd, 0x7b, 0xbe, 0xa9, 0xfc, 0x0b, 0x00, 0xf9},
+               {0xc0, 0x5f, 0xd6, 0x03, 0x1f, 0x20, 0x03, 0xd5}},
+    {0x24A10C, {0x88, 0x01, 0x00, 0x37}, {0x1f, 0x20, 0x03, 0xd5}},
+    {0x25097C, {0xff, 0x83, 0x06, 0xd1, 0xfd, 0x7b, 0x17, 0xa9},
+               {0x1f, 0x00, 0x80, 0x52, 0xc0, 0x03, 0x5f, 0xd6}},
+};
+
+static std::atomic<int> g_antidetect_applied{-1};
+
 bool setup;
 using namespace ImGui;
 
@@ -59,6 +84,70 @@ std::string GetProp(const char* key) {
     char value[PROP_VALUE_MAX];
     __system_property_get(key, value);
     return std::string(value);
+}
+
+static uintptr_t findLibraryBias(const char *library) {
+    char line[1024];
+    FILE *fp = fopen("/proc/self/maps", "rt");
+    if (!fp) return 0;
+
+    while (fgets(line, sizeof(line), fp)) {
+        unsigned long long start = 0;
+        unsigned long long end = 0;
+        unsigned long long offset = 0;
+        char perms[8] = {0};
+        if (sscanf(line, "%llx-%llx %7s %llx", &start, &end, perms, &offset) != 4) continue;
+        if (offset != 0 || !strstr(line, library)) continue;
+        fclose(fp);
+        return static_cast<uintptr_t>(start);
+    }
+
+    fclose(fp);
+    return 0;
+}
+
+static int applyAntiDetectPatches(uintptr_t bias) {
+    int applied = 0;
+    for (const auto &patch : kAntiDetectPatches) {
+        uintptr_t address = bias + patch.rva;
+        std::vector<uint8_t> current(patch.original.size());
+        if (!KittyMemory::memRead(current.data(), reinterpret_cast<const void *>(address), current.size())) continue;
+        if (current == patch.patched) {
+            applied++;
+            continue;
+        }
+        if (current != patch.original) continue;
+        if (!KittyMemory::memWrite(reinterpret_cast<void *>(address), patch.patched.data(), patch.patched.size())) continue;
+
+        std::vector<uint8_t> verify(patch.patched.size());
+        if (KittyMemory::memRead(verify.data(), reinterpret_cast<const void *>(address), verify.size()) && verify == patch.patched) {
+            applied++;
+        }
+    }
+    return applied;
+}
+
+static void reapplyAntiDetect() {
+    uintptr_t bias = findLibraryBias(OBFUSCATE("libanogs.so"));
+    if (!bias) {
+        g_antidetect_applied.store(-1);
+        return;
+    }
+    g_antidetect_applied.store(applyAntiDetectPatches(bias));
+}
+
+void *antidetect_thread(void *) {
+    int last = -2;
+    for (;;) {
+        reapplyAntiDetect();
+        int applied = g_antidetect_applied.load();
+        if (applied != last) {
+            __android_log_print(ANDROID_LOG_INFO, "MEOW_ANTIDETECT", "applied=%d/%d", applied, static_cast<int>(kAntiDetectPatches.size()));
+            last = applied;
+        }
+        sleep(1);
+    }
+    return nullptr;
 }
 
 int screenWidth;
@@ -200,6 +289,19 @@ void DrawMenu() {
 
     ImGui::SeparatorText("Weapon <Features>");
     ImGui::Checkbox("No Recoil", &noRecoil);
+
+    ImGui::SeparatorText("Anti-Detect <libanogs>");
+    int applied = g_antidetect_applied.load();
+    int total = static_cast<int>(kAntiDetectPatches.size());
+    if (applied < 0) {
+        ImGui::Text("Waiting for libanogs.so");
+    } else {
+        ImGui::Text("Active patches: %d/%d", applied, total);
+        if (applied < total) ImGui::Text("Some RVAs do not match this game build");
+    }
+    if (ImGui::Button("Reapply Now", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+        reapplyAntiDetect();
+    }
 
     ImGui::SeparatorText("il2cpp <Dumper>");
     if (ImGui::Button("Dump IL2CPP", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
@@ -414,6 +516,7 @@ void *hack_thread(void*) {
 __attribute__((constructor))
 void lib_main() {
     pthread_t hacks;
+    pthread_create(&hacks, NULL, antidetect_thread, NULL);
     pthread_create(&hacks, NULL, imgui_go, NULL);
     pthread_create(&hacks, NULL, hack_thread, NULL);
 }
