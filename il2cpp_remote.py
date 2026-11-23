@@ -254,9 +254,10 @@ class Il2CppRemote:
         return f32_from_v(fp, 0, 0)
 
     def call_vec3(self, rva: int, args: Optional[List[int]] = None,
-                  instance: Optional[int] = None) -> Tuple[float, float, float]:
+                  instance: Optional[int] = None,
+                  fp_args: Optional[List[Tuple[int, int, float]]] = None) -> Tuple[float, float, float]:
         """AAPCS64 returns Vector3 (3-float HFA) in v0.s[0:2], v1.s[0]."""
-        self.call(rva, args, instance=instance)
+        self.call(rva, args, instance=instance, fp_args=fp_args)
         fp = get_fp_regs(self.tid)
         return (f32_from_v(fp, 0, 0), f32_from_v(fp, 0, 1), f32_from_v(fp, 1, 0))
 
