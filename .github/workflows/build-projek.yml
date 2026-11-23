@@ -53,17 +53,19 @@ jobs:
           b64 = base64.b64encode(open(payload.name, 'rb').read()).decode()
           os.unlink(payload.name)
           out = os.path.join(proj, 'libMEOW-termux.sh')
-          script = """#!/system/bin/sh
-# libMEOW Termux installer - extracts libMEOW.so, inject, libMEOW.sh
-set -e
-DIR="${1:-$HOME/libMEOW}"
-mkdir -p "$DIR"
-B64='__B64__'
-echo "$B64" | base64 -d | tar -xz -C "$DIR"
-chmod +x "$DIR/libMEOW.sh" "$DIR/inject" "$DIR/libMEOW.so" 2>/dev/null || true
-echo "[+] Extracted to $DIR"
-echo "[*] Jalankan: sh $DIR/libMEOW.sh com.dts.freefireth"
-"""
+          script = "\n".join([
+              "#!/system/bin/sh",
+              "# libMEOW Termux installer - extracts libMEOW.so, inject, libMEOW.sh",
+              "set -e",
+              'DIR="${1:-$HOME/libMEOW}"',
+              'mkdir -p "$DIR"',
+              "B64='__B64__'",
+              'echo "$B64" | base64 -d | tar -xz -C "$DIR"',
+              'chmod +x "$DIR/libMEOW.sh" "$DIR/inject" "$DIR/libMEOW.so" 2>/dev/null || true',
+              'echo "[+] Extracted to $DIR"',
+              'echo "[*] Jalankan: sh $DIR/libMEOW.sh com.dts.freefireth"',
+              "",
+          ])
           open(out, 'w').write(script.replace('__B64__', b64))
           os.chmod(out, os.stat(out).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
           print(out)
