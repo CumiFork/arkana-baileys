@@ -79,6 +79,7 @@ int32_t _ANativeWindow_getHeight(ANativeWindow* window) {
 bool esp = false;
 bool drawEnemyBox = false;
 bool noRecoil = false;
+bool showMenu = true;
 ImVec4 espLineColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 static float espMaxDistance = 999.0f;
 static float linePositionX = 0.5f;
@@ -89,7 +90,7 @@ Vector3 (*WorldToScreenPoint)(void* instance, Vector3);
 Vector3 (*get_position)(void* instance);
 void* (*get_main)();
 void* (*get_transform)(void* instance);
-void (*old_Player_update)(void* player);
+void (*old_Player_update)(void* player, float a, float b, void* method);
 
 struct ESPBox {
     Vector3 top;
@@ -115,30 +116,33 @@ Vec2f my_RecoilGetDelta(void* thiz, void* method) {
     return {0.0f, 0.0f};
 }
 
-void Player_update(void* player) {
-    if (!player) return;
+void Player_update(void* player, float a, float b, void* method) {
+    if (old_Player_update) old_Player_update(player, a, b, method);
+    if (!esp || !player || !g_il2cpp_ready) return;
+    if (!get_transform || !get_position || !get_main || !WorldToScreenPoint) return;
 
     void* transform = get_transform(player);
+    if (!transform) return;
+    void* mainCam = get_main();
+    if (!mainCam) return;
+
     Vector3 pos = get_position(transform);
-
-   
     Vector3 bottomPos = { pos.x, pos.y, pos.z };
-    Vector3 topPos = { pos.x, pos.y + 2.0f, pos.z };
+    Vector3 topPos = { pos.x, pos.y + 1.6f, pos.z };
 
-    Vector3 screenBottom = WorldToScreenPoint(get_main(), bottomPos);
-    Vector3 screenTop = WorldToScreenPoint(get_main(), topPos);
+    Vector3 screenBottom = WorldToScreenPoint(mainCam, bottomPos);
+    Vector3 screenTop = WorldToScreenPoint(mainCam, topPos);
 
     if (screenBottom.z >= 1.0f && screenTop.z >= 1.0f) {
         screenBottom.y = screenHeight - screenBottom.y;
         screenTop.y = screenHeight - screenTop.y;
         espBoxes.push_back({ screenTop, screenBottom });
     }
-
-    old_Player_update(player);
 }
 
 void DrawESP() {
-    if (!esp || espBoxes.empty()) return;
+    if (!esp) { espBoxes.clear(); return; }
+    if (espBoxes.empty()) return;
 
     ImU32 espLineColorU32 = ImGui::ColorConvertFloat4ToU32(espLineColor);
     ImVec2 screenTopLine = ImVec2(screenWidth * linePositionX, 0.0f);
@@ -163,26 +167,36 @@ void DrawESP() {
 }
 
 
-// Our Menu
 void DrawMenu() {
-	auto il2cpp_handle = dlopen("libil2cpp.so", 4);
+    if (!showMenu) {
+        ImGui::SetNextWindowBgAlpha(0.6f);
+        ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Always);
+        ImGui::Begin("##menu_toggle", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+        if (ImGui::Button("MENU", ImVec2(140, 60))) {
+            showMenu = true;
+        }
+        ImGui::End();
+        return;
+    }
+
     const ImVec2 window_size = ImVec2(700, 600);
     ImGui::SetNextWindowSize(window_size, ImGuiCond_Once);
-    ImGui::Begin("IMGUI MODMENU", nullptr, ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImGui::Begin("IMGUI MODMENU", &showMenu, ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     ImGui::SeparatorText("Unity <ESP>");
     ImGui::Checkbox("Enable Esp", &esp);
-	ImGui::Checkbox("Draw Enemy Box", &drawEnemyBox);
+    ImGui::Checkbox("Draw Enemy Box", &drawEnemyBox);
 
     ImGui::SeparatorText("Weapon <Features>");
     ImGui::Checkbox("No Recoil", &noRecoil);
-	
-	ImGui::SeparatorText("il2cpp <Dumper>");
-	if (ImGui::Button("Dump IL2CPP",ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
-		if (il2cpp_handle) {
-			il2cpp_dump(il2cpp_handle);
-		}
-	}
+
+    ImGui::SeparatorText("il2cpp <Dumper>");
+    if (ImGui::Button("Dump IL2CPP", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+        auto il2cpp_handle = dlopen("libil2cpp.so", 4);
+        if (il2cpp_handle) {
+            il2cpp_dump(il2cpp_handle);
+        }
+    }
 
     ImGui::End();
 }
@@ -358,13 +372,14 @@ void *hack_thread(void*) {
      sleep(1);
     } while (!isLibraryLoaded("libil2cpp.so"));
 	
-	WorldToScreenPoint = (Vector3(*)(void*, Vector3)) getAbsoluteAddress("libil2cpp.so", 0x5edd234);//Camera WorldToScreenPoint(Vector3 position)
-    get_position = (Vector3 (*)(void *)) getAbsoluteAddress("libil2cpp.so", 0x5f33224);//Transform get_position
-    get_transform = (void *(*)(void*)) getAbsoluteAddress("libil2cpp.so", 0x5f1f9e8);//Component get_transform
-    get_main = (void*(*)()) getAbsoluteAddress("libil2cpp.so", 0x5edd4c4);//Camera get_main
-    
-    //private Void Update() { } //0x2e657b0
-    DobbyHook((void *)getAbsoluteAddress("libil2cpp.so", 0x2e657b0), (void *) &Player_update, (void **) &old_Player_update);
+    // Offsets from dump.cs
+    WorldToScreenPoint = (Vector3(*)(void*, Vector3)) getAbsoluteAddress("libil2cpp.so", 0x9F8F984); // Camera.WorldToScreenPoint(Vector3)
+    get_position = (Vector3 (*)(void *)) getAbsoluteAddress("libil2cpp.so", 0x9FE5A68); // Transform.get_position()
+    get_transform = (void *(*)(void*)) getAbsoluteAddress("libil2cpp.so", 0x9FD75D0); // Component.get_transform()
+    get_main = (void*(*)()) getAbsoluteAddress("libil2cpp.so", 0x9F8FD00); // Camera.get_main()
+
+    // PlayerNetwork.OnUpdate(float, float) - RVA 0x72D1DA0
+    DobbyHook((void *)getAbsoluteAddress("libil2cpp.so", 0x72D1DA0), (void *) &Player_update, (void **) &old_Player_update);
 
     // No recoil hooks (dump.cs RVAs)
     DobbyHook((void *)getAbsoluteAddress("libil2cpp.so", 0x74BAA18), (void *) &my_RecoilApply, (void **) &orig_RecoilApply);
