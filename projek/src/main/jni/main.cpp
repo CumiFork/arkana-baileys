@@ -283,31 +283,44 @@ EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     }
 	
     ImGuiIO &io = ImGui::GetIO();
-    int (*TouchCount)(void*) = (int (*)(void*)) Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Input", "get_touchCount", 0);
-    int touchCount = TouchCount(nullptr);
-    if (touchCount > 0) {
-        UnityEngine_Touch_Fields touch = ((UnityEngine_Touch_Fields (*)(int)) Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Input", "GetTouch", 1)) (0);
-        float reverseY = io.DisplaySize.y - touch.m_Position.fields.y;
+    static int (*TouchCount)(void *) = nullptr;
+    static UnityEngine_Touch_Fields (*GetTouch)(int) = nullptr;
+    static bool touch_resolved = false;
+    if (!touch_resolved) {
+        TouchCount = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Input", "get_touchCount", 0);
+        if (!TouchCount) TouchCount = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Input", "get_touchCount", 0);
+        if (!TouchCount) TouchCount = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.InputLegacyModule.dll", "UnityEngine", "Input", "get_touchCount", 0);
+        GetTouch = (UnityEngine_Touch_Fields (*)(int))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Input", "GetTouch", 1);
+        if (!GetTouch) GetTouch = (UnityEngine_Touch_Fields (*)(int))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Input", "GetTouch", 1);
+        if (!GetTouch) GetTouch = (UnityEngine_Touch_Fields (*)(int))Il2CppGetMethodOffset("UnityEngine.InputLegacyModule.dll", "UnityEngine", "Input", "GetTouch", 1);
+        touch_resolved = TouchCount && GetTouch;
+    }
+    if (TouchCount && GetTouch) {
+        int touchCount = TouchCount(nullptr);
+        if (touchCount > 0) {
+            UnityEngine_Touch_Fields touch = GetTouch(0);
+            float reverseY = io.DisplaySize.y - touch.m_Position.fields.y;
 
-        switch (touch.m_Phase) {
-            case TouchPhase::Began:
-            case TouchPhase::Stationary:
-                io.MousePos = ImVec2(touch.m_Position.fields.x, reverseY);
-                io.MouseDown[0] = true;
-                break;
-            case TouchPhase::Ended:
-            case TouchPhase::Canceled:
-                io.MouseDown[0] = false;
-                should_clear_mouse_pos = true;
-                break;
-            case TouchPhase::Moved:
-                io.MousePos = ImVec2(touch.m_Position.fields.x, reverseY);
-                break;
-            default:
-                break;
+            switch (touch.m_Phase) {
+                case TouchPhase::Began:
+                case TouchPhase::Stationary:
+                    io.MousePos = ImVec2(touch.m_Position.fields.x, reverseY);
+                    io.MouseDown[0] = true;
+                    break;
+                case TouchPhase::Ended:
+                case TouchPhase::Canceled:
+                    io.MouseDown[0] = false;
+                    should_clear_mouse_pos = true;
+                    break;
+                case TouchPhase::Moved:
+                    io.MousePos = ImVec2(touch.m_Position.fields.x, reverseY);
+                    break;
+                default:
+                    break;
+            }
+        } else {
+            io.MouseDown[0] = false;
         }
-    } else {
-        io.MouseDown[0] = false;
     }
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
