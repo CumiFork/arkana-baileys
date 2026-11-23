@@ -9,11 +9,12 @@
 #include <sstream>
 #include <iomanip>
 #include <cctype>
-#include <cstring> // for strcmp
-#include <sstream>
+#include <cstring>
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <mutex>
+#include <vector>
 #include <unistd.h>
 #include <sys/system_properties.h>
 #include <android/log.h>
@@ -75,7 +76,6 @@ static const std::vector<AntiDetectPatch> kAntiDetectPatches = {
 static std::atomic<int> g_antidetect_applied{-1};
 static pthread_mutex_t g_antidetect_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-bool setup;
 using namespace ImGui;
 
 std::string GetProp(const char* key) {
@@ -176,10 +176,10 @@ static float linePositionX = 0.5f;
 std::vector<Vector3> espPoints;
 
 void (*setpitchyaw)(float, float);
-Vector3 (*WorldToScreenPoint)(void* instance, Vector3);
-Vector3 (*get_position)(void* instance);
-void* (*get_main)();
-void* (*get_transform)(void* instance);
+Vector3 (*WorldToScreenPoint)(void*, Vector3, void*) = nullptr;
+Vector3 (*get_position)(void*, void*) = nullptr;
+void* (*get_main)(void*) = nullptr;
+void* (*get_transform)(void*, void*) = nullptr;
 void* (*CurrentLocalPlayer)(void*) = nullptr;
 bool (*IsLocalTeammate)(void*, void*) = nullptr;
 bool (*get_IsDead)(void*, void*) = nullptr;
@@ -190,6 +190,8 @@ struct ESPBox {
     Vector3 bottom;
 };
 std::vector<ESPBox> espBoxes;
+static std::mutex g_esp_mutex;
+static std::recursive_mutex g_render_mutex;
 static volatile bool g_il2cpp_ready = false;
 
 // No recoil (Free Fire, offsets from dump.cs)
@@ -222,34 +224,43 @@ void Player_update(void* player, float a, float b, void* method) {
     if (IsLocalTeammate && IsLocalTeammate(player, nullptr)) return;
     if (get_IsDead && get_IsDead(player, nullptr)) return;
 
-    void* transform = get_transform(player);
+    void* transform = get_transform(player, nullptr);
     if (!transform) return;
-    void* mainCam = get_main();
+    void* mainCam = get_main(nullptr);
     if (!mainCam) return;
 
-    Vector3 pos = get_position(transform);
+    Vector3 pos = get_position(transform, nullptr);
     Vector3 bottomPos = { pos.x, pos.y, pos.z };
     Vector3 topPos = { pos.x, pos.y + 1.6f, pos.z };
 
-    Vector3 screenBottom = WorldToScreenPoint(mainCam, bottomPos);
-    Vector3 screenTop = WorldToScreenPoint(mainCam, topPos);
+    Vector3 screenBottom = WorldToScreenPoint(mainCam, bottomPos, nullptr);
+    Vector3 screenTop = WorldToScreenPoint(mainCam, topPos, nullptr);
 
     if (screenBottom.z >= 1.0f && screenTop.z >= 1.0f) {
         screenBottom.y = screenHeight - screenBottom.y;
         screenTop.y = screenHeight - screenTop.y;
+        std::lock_guard<std::mutex> lock(g_esp_mutex);
         espBoxes.push_back({ screenTop, screenBottom });
     }
 }
 
 void DrawESP() {
-    if (!esp) { espBoxes.clear(); return; }
-    if (espBoxes.empty()) return;
+    std::vector<ESPBox> boxes;
+    {
+        std::lock_guard<std::mutex> lock(g_esp_mutex);
+        if (!esp) {
+            espBoxes.clear();
+            return;
+        }
+        boxes.swap(espBoxes);
+    }
+    if (boxes.empty()) return;
 
     ImU32 espLineColorU32 = ImGui::ColorConvertFloat4ToU32(espLineColor);
     ImVec2 screenTopLine = ImVec2(screenWidth * linePositionX, 0.0f);
     auto* draw = ImGui::GetBackgroundDrawList();
 
-    for (const auto& box : espBoxes) {
+    for (const auto& box : boxes) {
         if (box.bottom.z < 1.0f || box.top.z < 1.0f) continue;
 
         float boxHeight = fabsf(box.bottom.y - box.top.y);
@@ -263,16 +274,14 @@ void DrawESP() {
 			
         draw->AddLine(screenTopLine, ImVec2(box.top.x, box.top.y), espLineColorU32, 2.0f);
     }
-
-    espBoxes.clear();
 }
 
 
 void DrawMenu() {
     if (!showMenu) {
         ImGui::SetNextWindowBgAlpha(0.6f);
-        ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Always);
-        ImGui::Begin("##menu_toggle", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+        ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Once);
+        ImGui::Begin("##menu_toggle", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
         if (ImGui::Button("MENU", ImVec2(140, 60))) {
             showMenu = true;
         }
@@ -285,7 +294,6 @@ void DrawMenu() {
     ImGui::SetNextWindowSize(window_size, ImGuiCond_Once);
     ImGui::Begin("IMGUI MODMENU", &showMenu,
                  ImGuiWindowFlags_NoBringToFrontOnFocus |
-                 ImGuiWindowFlags_NoMove |
                  ImGuiWindowFlags_NoResize);
 
     ImGui::SeparatorText("Unity <ESP>");
@@ -319,23 +327,57 @@ void DrawMenu() {
     ImGui::End();
 }
 
+struct UnityEngine_Vector2_Fields {
+    float x;
+    float y;
+};
+
+struct UnityEngine_Vector2_o {
+    UnityEngine_Vector2_Fields fields;
+};
+
+enum TouchPhase {
+    Began = 0,
+    Moved = 1,
+    Stationary = 2,
+    Ended = 3,
+    Canceled = 4
+};
+
+struct UnityEngine_Touch_Fields {
+    int32_t m_FingerId;
+    UnityEngine_Vector2_o m_Position;
+    UnityEngine_Vector2_o m_RawPosition;
+    UnityEngine_Vector2_o m_PositionDelta;
+    float m_TimeDelta;
+    int32_t m_TapCount;
+    int32_t m_Phase;
+    int32_t m_Type;
+    float m_Pressure;
+    float m_maximumPossiblePressure;
+    float m_Radius;
+    float m_fRadiusVariance;
+    float m_AltitudeAngle;
+    float m_AzimuthAngle;
+};
+
+static int (*g_screenWidth)(void*) = nullptr;
+static int (*g_screenHeight)(void*) = nullptr;
+static int (*g_touchCount)(void*) = nullptr;
+static UnityEngine_Touch_Fields (*g_getTouch)(int, void*) = nullptr;
 
 void SetupImgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    int (*get_width)(void *) = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Screen", "get_width", 0);
-    if (!get_width) get_width = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Screen", "get_width", 0);
-    int (*get_height)(void *) = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Screen", "get_height", 0);
-    if (!get_height) get_height = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Screen", "get_height", 0);
-    if (get_width && get_height) {
-        io.DisplaySize = ImVec2((float)get_width(0), (float)get_height(0));
+    if (g_screenWidth && g_screenHeight) {
+        io.DisplaySize = ImVec2((float)g_screenWidth(nullptr), (float)g_screenHeight(nullptr));
     } else if (screenWidth > 0 && screenHeight > 0) {
         io.DisplaySize = ImVec2((float)screenWidth, (float)screenHeight);
     } else {
         io.DisplaySize = ImVec2(1080.0f, 2400.0f);
     }
-	ImGui::StyleColorsDark(); // Set a theme
+	ImGui::StyleColorsDark();
 	ImGuiStyle *style = &ImGui::GetStyle();
 	
 	style->Alpha = 1.0f;
@@ -362,41 +404,6 @@ void SetupImgui() {
 }
 
 
-bool clearMousePos = true;
-struct UnityEngine_Vector2_Fields {
-    float x;
-    float y;
-};
-
-struct UnityEngine_Vector2_o {
-    UnityEngine_Vector2_Fields fields;
-};
-
-enum TouchPhase {
-    Began = 0,
-    Moved = 1,
-    Stationary = 2,
-    Ended = 3,
-    Canceled = 4
-};
-
-struct UnityEngine_Touch_Fields {
-    int32_t m_FingerId;
-    struct UnityEngine_Vector2_o m_Position;
-    struct UnityEngine_Vector2_o m_RawPosition;
-    struct UnityEngine_Vector2_o m_PositionDelta;
-    float m_TimeDelta;
-    int32_t m_TapCount;
-    int32_t m_Phase;
-    int32_t m_Type;
-    float m_Pressure;
-    float m_maximumPossiblePressure;
-    float m_Radius;
-    float m_fRadiusVariance;
-    float m_AltitudeAngle;
-    float m_AzimuthAngle;
-};
-
 EGLBoolean (*old_eglSwapBuffers)(EGLDisplay dpy, EGLSurface surface);
 
 static EGLBoolean callOldSwap(EGLDisplay dpy, EGLSurface surface) {
@@ -407,45 +414,32 @@ EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     if (!g_il2cpp_ready) {
         return callOldSwap(dpy, surface);
     }
-	
+
+    std::lock_guard<std::recursive_mutex> renderLock(g_render_mutex);
     static bool is_setup = false;
     static bool should_clear_mouse_pos = false;
-	
+
     if (!is_setup) {
 		SetupImgui();
         is_setup = true;
     }
-	
+
     ImGuiIO &io = ImGui::GetIO();
-    static int (*TouchCount)(void *) = nullptr;
-    static UnityEngine_Touch_Fields (*GetTouch)(int, void *) = nullptr;
-    static bool touch_logged = false;
-    if (!TouchCount || !GetTouch) {
-        TouchCount = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Input", "get_touchCount", 0);
-        if (!TouchCount) TouchCount = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Input", "get_touchCount", 0);
-        if (!TouchCount) TouchCount = (int (*)(void *))Il2CppGetMethodOffset("UnityEngine.InputLegacyModule.dll", "UnityEngine", "Input", "get_touchCount", 0);
-        GetTouch = (UnityEngine_Touch_Fields (*)(int, void *))Il2CppGetMethodOffset("UnityEngine.dll", "UnityEngine", "Input", "GetTouch", 1);
-        if (!GetTouch) GetTouch = (UnityEngine_Touch_Fields (*)(int, void *))Il2CppGetMethodOffset("UnityEngine.CoreModule.dll", "UnityEngine", "Input", "GetTouch", 1);
-        if (!GetTouch) GetTouch = (UnityEngine_Touch_Fields (*)(int, void *))Il2CppGetMethodOffset("UnityEngine.InputLegacyModule.dll", "UnityEngine", "Input", "GetTouch", 1);
-        if (!touch_logged && TouchCount && GetTouch) {
-            __android_log_print(ANDROID_LOG_INFO, "MEOW_INPUT", "touch resolved");
-            touch_logged = true;
-        }
+    if (g_screenWidth && g_screenHeight) {
+        io.DisplaySize = ImVec2((float)g_screenWidth(nullptr), (float)g_screenHeight(nullptr));
     }
-    if (TouchCount && GetTouch) {
-        int touchCount = TouchCount(nullptr);
+    if (g_touchCount && g_getTouch) {
+        int touchCount = g_touchCount(nullptr);
         if (touchCount > 0) {
-            UnityEngine_Touch_Fields touch = GetTouch(0, nullptr);
+            UnityEngine_Touch_Fields touch = g_getTouch(0, nullptr);
             float reverseY = io.DisplaySize.y - touch.m_Position.fields.y;
 
-            static bool touch_coords_logged = false;
-            if (!touch_coords_logged) {
+            if (touch.m_Phase == TouchPhase::Began) {
                 __android_log_print(ANDROID_LOG_INFO, "MEOW_INPUT",
                                     "display=%.0fx%.0f touch=%.1f,%.1f imgui=%.1f,%.1f",
                                     io.DisplaySize.x, io.DisplaySize.y,
                                     touch.m_Position.fields.x, touch.m_Position.fields.y,
                                     touch.m_Position.fields.x, reverseY);
-                touch_coords_logged = true;
             }
 
             switch (touch.m_Phase) {
@@ -516,10 +510,14 @@ void *hack_thread(void*) {
     } while (!isLibraryLoaded("libil2cpp.so"));
 	
     // Offsets from dump.cs
-    WorldToScreenPoint = (Vector3(*)(void*, Vector3)) getAbsoluteAddress("libil2cpp.so", 0x9F8F984); // Camera.WorldToScreenPoint(Vector3)
-    get_position = (Vector3 (*)(void *)) getAbsoluteAddress("libil2cpp.so", 0x9FE5A68); // Transform.get_position()
-    get_transform = (void *(*)(void*)) getAbsoluteAddress("libil2cpp.so", 0x9FD75D0); // Component.get_transform()
-    get_main = (void*(*)()) getAbsoluteAddress("libil2cpp.so", 0x9F8FD00); // Camera.get_main()
+    WorldToScreenPoint = (Vector3(*)(void*, Vector3, void*)) getAbsoluteAddress("libil2cpp.so", 0x9F8F984);
+    get_position = (Vector3 (*)(void*, void*)) getAbsoluteAddress("libil2cpp.so", 0x9FE5A68);
+    get_transform = (void *(*)(void*, void*)) getAbsoluteAddress("libil2cpp.so", 0x9FD75D0);
+    get_main = (void*(*)(void*)) getAbsoluteAddress("libil2cpp.so", 0x9F8FD00);
+    g_screenWidth = (int (*)(void*)) getAbsoluteAddress("libil2cpp.so", 0x9F9D1D4);
+    g_screenHeight = (int (*)(void*)) getAbsoluteAddress("libil2cpp.so", 0x9F9D1FC);
+    g_touchCount = (int (*)(void*)) getAbsoluteAddress("libil2cpp.so", 0xA018CA0);
+    g_getTouch = (UnityEngine_Touch_Fields (*)(int, void*)) getAbsoluteAddress("libil2cpp.so", 0xA0186C8);
     CurrentLocalPlayer = (void* (*)(void*)) getAbsoluteAddress("libil2cpp.so", 0x71BD10C); // GameFacade.CurrentLocalPlayer()
     IsLocalTeammate = (bool (*)(void*, void*)) getAbsoluteAddress("libil2cpp.so", 0x71BD8EC); // GameFacade.IsLocalTeammate(Player)
     get_IsDead = (bool (*)(void*, void*)) getAbsoluteAddress("libil2cpp.so", 0x716C210); // Player.get_IsDead()
@@ -534,16 +532,8 @@ void *hack_thread(void*) {
     Il2CppAttach("libil2cpp.so");
     g_il2cpp_ready = true;
     sleep(5);
-	
-	/*
-	WorldToScreenPoint=(Vector3(*)(void*,Vector3))((uintptr_t)Il2CppGetMethodOffset(OBFUSCATE("UnityEngine.dll"),OBFUSCATE("UnityEngine"),OBFUSCATE("Camera"),OBFUSCATE("WorldToScreenPoint"),1));
-	get_main=(void*(*)())((uintptr_t)Il2CppGetMethodOffset(OBFUSCATE("UnityEngine.dll"),OBFUSCATE("UnityEngine"),OBFUSCATE("Camera"),OBFUSCATE("get_main"),0));
-	get_position=(Vector3(*)(void*))((uintptr_t)Il2CppGetMethodOffset(OBFUSCATE("UnityEngine.dll"),OBFUSCATE("UnityEngine"),OBFUSCATE("Transform"),OBFUSCATE("get_position"),0));
-	get_transform=(void*(*)(void*))((uintptr_t)Il2CppGetMethodOffset(OBFUSCATE("UnityEngine.dll"),OBFUSCATE("UnityEngine"),OBFUSCATE("Component"),OBFUSCATE("get_transform"),0));
-	DobbyHook(Il2CppGetMethodOffset(OBFUSCATE("Assembly-CSharp.dll"), OBFUSCATE(""), OBFUSCATE("PersonTarget"), OBFUSCATE("Update"), 0), (void*)Player_update, (void**)&old_Player_update);
-	*/
-	
-	return nullptr; // same as pthread_exit(nullptr);
+
+	return nullptr;
 }
 
 __attribute__((constructor))
