@@ -27,6 +27,17 @@ Strings are stored with a rolling XOR. Decrypted messages:
 
 Other related strings: `mt2_no_root` at `0x8EB8B`, `name=%s|rate=%.2f|is_root=%d` at `0x942DD`, `inline_hook_opcode_dismatch`, `ptrace_stop`, `/proc/%d/wchan`, `/proc/%d/task/%d/wchan`, `com.ace.gamesafe4`.
 
+## Native debugger and ptrace detection
+
+`libanogs.so` has a dedicated debugger checker around `0x25E9D8`. It branches at `0x25EAD8` into a block that calls `ptrace` with `PTRACE_ATTACH` (`0x10`), `PTRACE_DETACH` (`0x11`), `PTRACE_GETREGSET` (`0x4204`), and `PTRACE_SETREGSET` (`0x4205`). The block also checks the stopped instruction and the `0x4111AD` pattern before restoring registers.
+
+The checker records its result in an object field and exposes it through two small getters:
+
+- `0x25E9C8`, `ldr w0, [x0, #0x74]`, returns the numeric debugger status.
+- `0x25E9D0`, `ldrb w0, [x0, #0x78]`, returns the debugger flag.
+
+Both getters are called from JNI wrappers around `0x2BB6D0`, so managed anti-cheat code can read the result. All native detection reports converge on the shared builder at `0x2594AC`, which serializes an event ID and sends it through the in-game report channel.
+
 ## Patched RVAs in libanogs.so
 
 | Name | RVA | Effect |
@@ -37,12 +48,16 @@ Other related strings: `mt2_no_root` at `0x8EB8B`, `name=%s|rate=%.2f|is_root=%d
 | `unlock_report` | `0x2B3E08` | unlock warning report builder returns early |
 | `mt2_no_root_branch` | `0x24A10C` | config flag no longer sets detection byte |
 | `root_telemetry` | `0x25097C` | `is_root` telemetry always 0 |
+| `debugger_check_branch` | `0x25EAD8` | debugger checker never enters the ptrace block |
+| `debugger_status_getter` | `0x25E9C8` | native debugger status always 0 |
+| `debugger_flag_getter` | `0x25E9D0` | native debugger flag always 0 |
+| `native_report_sink` | `0x2594AC` | shared native detection report builder returns early |
 
-Both report builders send event code `0x3F2` with the decrypted warning text. Returning early removes the in-game warning and report path.
+Both report builders send event code `0x3F2` with the decrypted warning text. Returning early removes the in-game warning and report path. The report sink patch covers every other native detection event as well.
 
 ## Usage
 
-`projek/src/main/jni/main.cpp` now applies these patches from inside the game when `libMEOW.so` is injected. A watcher thread waits for `libanogs.so`, applies all six patches, and rechecks them every second. The ImGui menu shows `Active patches: n/6` and has a `Reapply Now` button.
+`projek/src/main/jni/main.cpp` now applies these patches from inside the game when `libMEOW.so` is injected. A watcher thread waits for `libanogs.so`, applies all ten patches, and rechecks them every second. The ImGui menu shows `Active patches: n/10` and has a `Reapply Now` button.
 
 Rebuild `libMEOW.so` after this source change. The existing `.so` files are stale.
 
