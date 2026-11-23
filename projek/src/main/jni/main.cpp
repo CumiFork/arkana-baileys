@@ -522,14 +522,6 @@ void *hack_thread(void*) {
     IsLocalTeammate = (bool (*)(void*, void*)) getAbsoluteAddress("libil2cpp.so", 0x71BD8EC); // GameFacade.IsLocalTeammate(Player)
     get_IsDead = (bool (*)(void*, void*)) getAbsoluteAddress("libil2cpp.so", 0x716C210); // Player.get_IsDead()
 
-    // PlayerNetwork.OnUpdate(float, float) - RVA 0x72D1DA0
-    DobbyHook((void *)getAbsoluteAddress("libil2cpp.so", 0x72D1DA0), (void *) &Player_update, (void **) &old_Player_update);
-
-    // No recoil hooks (dump.cs RVAs)
-    DobbyHook((void *)getAbsoluteAddress("libil2cpp.so", 0x74BAA18), (void *) &my_RecoilApply, (void **) &orig_RecoilApply);
-    DobbyHook((void *)getAbsoluteAddress("libil2cpp.so", 0x74BB99C), (void *) &my_RecoilGetDelta, (void **) &orig_RecoilGetDelta);
-	
-    Il2CppAttach("libil2cpp.so");
     g_il2cpp_ready = true;
     sleep(5);
 
