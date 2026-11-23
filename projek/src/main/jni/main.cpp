@@ -90,6 +90,9 @@ Vector3 (*WorldToScreenPoint)(void* instance, Vector3);
 Vector3 (*get_position)(void* instance);
 void* (*get_main)();
 void* (*get_transform)(void* instance);
+void* (*CurrentLocalPlayer)(void*) = nullptr;
+bool (*IsLocalTeammate)(void*, void*) = nullptr;
+bool (*get_IsDead)(void*, void*) = nullptr;
 void (*old_Player_update)(void* player, float a, float b, void* method);
 
 struct ESPBox {
@@ -121,6 +124,13 @@ void Player_update(void* player, float a, float b, void* method) {
     if (old_Player_update) old_Player_update(player, a, b, method);
     if (!esp || !player || !g_il2cpp_ready) return;
     if (!get_transform || !get_position || !get_main || !WorldToScreenPoint) return;
+
+    if (CurrentLocalPlayer) {
+        void* local = CurrentLocalPlayer(nullptr);
+        if (local && local == player) return;
+    }
+    if (IsLocalTeammate && IsLocalTeammate(player, nullptr)) return;
+    if (get_IsDead && get_IsDead(player, nullptr)) return;
 
     void* transform = get_transform(player);
     if (!transform) return;
@@ -180,7 +190,7 @@ void DrawMenu() {
         return;
     }
 
-    const ImVec2 window_size = ImVec2(700, 600);
+    const ImVec2 window_size = ImVec2(500, 420);
     ImGui::SetNextWindowSize(window_size, ImGuiCond_Once);
     ImGui::Begin("IMGUI MODMENU", &showMenu, ImGuiWindowFlags_NoBringToFrontOnFocus);
 
@@ -240,8 +250,8 @@ void SetupImgui() {
     ImGui_ImplOpenGL3_Init("#version 100");
 	
     ImFontConfig font_cfg;
-    io.Fonts->AddFontFromMemoryTTF(&Roboto_Regular, sizeof(Roboto_Regular), 40.0, &font_cfg, io.Fonts->GetGlyphRangesCyrillic());
-    ImGui::GetStyle().ScaleAllSizes(3.0f);
+    io.Fonts->AddFontFromMemoryTTF(&Roboto_Regular, sizeof(Roboto_Regular), 24.0f, &font_cfg, io.Fonts->GetGlyphRangesCyrillic());
+    ImGui::GetStyle().ScaleAllSizes(1.8f);
 }
 
 
@@ -375,6 +385,9 @@ void *hack_thread(void*) {
     get_position = (Vector3 (*)(void *)) getAbsoluteAddress("libil2cpp.so", 0x9FE5A68); // Transform.get_position()
     get_transform = (void *(*)(void*)) getAbsoluteAddress("libil2cpp.so", 0x9FD75D0); // Component.get_transform()
     get_main = (void*(*)()) getAbsoluteAddress("libil2cpp.so", 0x9F8FD00); // Camera.get_main()
+    CurrentLocalPlayer = (void* (*)(void*)) getAbsoluteAddress("libil2cpp.so", 0x71BD10C); // GameFacade.CurrentLocalPlayer()
+    IsLocalTeammate = (bool (*)(void*, void*)) getAbsoluteAddress("libil2cpp.so", 0x71BD8EC); // GameFacade.IsLocalTeammate(Player)
+    get_IsDead = (bool (*)(void*, void*)) getAbsoluteAddress("libil2cpp.so", 0x716C210); // Player.get_IsDead()
 
     // PlayerNetwork.OnUpdate(float, float) - RVA 0x72D1DA0
     DobbyHook((void *)getAbsoluteAddress("libil2cpp.so", 0x72D1DA0), (void *) &Player_update, (void **) &old_Player_update);
