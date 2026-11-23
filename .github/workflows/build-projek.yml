@@ -38,29 +38,36 @@ jobs:
 
       - name: Package Termux installer
         run: |
-          set -e
-          OUT=projek/libMEOW-termux.sh
-          PAYLOAD=$(mktemp)
-          tar -C projek -czf "$PAYLOAD" libMEOW.so inject libMEOW.sh
-          # ensure libMEOW.so from build is used
-          cp projek/src/main/libs/arm64-v8a/libMEOW.so projek/libMEOW.so
-          tar -C projek -czf "$PAYLOAD" libMEOW.so inject libMEOW.sh
-          B64=$(base64 -w0 "$PAYLOAD")
-          cat > "$OUT" <<'HDR'
-#!/system/bin/sh
+          python3 - <<'PY'
+          import base64, os, tarfile, tempfile, stat
+          proj = 'projek'
+          built = os.path.join(proj, 'src/main/libs/arm64-v8a/libMEOW.so')
+          os.makedirs(proj, exist_ok=True)
+          import shutil
+          shutil.copy2(built, os.path.join(proj, 'libMEOW.so'))
+          payload = tempfile.NamedTemporaryFile(delete=False)
+          payload.close()
+          with tarfile.open(payload.name, 'w:gz') as tar:
+              for name in ['libMEOW.so', 'inject', 'libMEOW.sh']:
+                  tar.add(os.path.join(proj, name), arcname=name)
+          b64 = base64.b64encode(open(payload.name, 'rb').read()).decode()
+          os.unlink(payload.name)
+          out = os.path.join(proj, 'libMEOW-termux.sh')
+          script = """#!/system/bin/sh
 # libMEOW Termux installer - extracts libMEOW.so, inject, libMEOW.sh
 set -e
 DIR="${1:-$HOME/libMEOW}"
 mkdir -p "$DIR"
-HDR
-          printf "B64='%s'\n" "$B64" >> "$OUT"
-          cat >> "$OUT" <<'FTR'
+B64='__B64__'
 echo "$B64" | base64 -d | tar -xz -C "$DIR"
 chmod +x "$DIR/libMEOW.sh" "$DIR/inject" "$DIR/libMEOW.so" 2>/dev/null || true
 echo "[+] Extracted to $DIR"
 echo "[*] Jalankan: sh $DIR/libMEOW.sh com.dts.freefireth"
-FTR
-          chmod +x "$OUT"
+"""
+          open(out, 'w').write(script.replace('__B64__', b64))
+          os.chmod(out, os.stat(out).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+          print(out)
+          PY
 
       - name: Upload libMEOW.so
         uses: actions/upload-artifact@v4
