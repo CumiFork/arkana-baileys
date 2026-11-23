@@ -94,6 +94,15 @@ std::string GetProp(const char* key) {
     return std::string(value);
 }
 
+static bool GetPropBool(const char* key, bool fallback) {
+    std::string v = GetProp(key);
+    if (v == "1" || v == "true") return true;
+    if (v == "0" || v == "false") return false;
+    return fallback;
+}
+
+
+
 static uintptr_t findLibraryBias(const char *library) {
     char line[1024];
     FILE *fp = fopen("/proc/self/maps", "rt");
@@ -148,14 +157,17 @@ static void reapplyAntiDetect() {
 }
 
 void *antidetect_thread(void *) {
-    if (GetProp("meow.antidetect") != "1") return nullptr;
     int last = -2;
     for (;;) {
-        reapplyAntiDetect();
-        int applied = g_antidetect_applied.load();
-        if (applied != last) {
-            __android_log_print(ANDROID_LOG_INFO, "MEOW_ANTIDETECT", "applied=%d/%d", applied, static_cast<int>(kAntiDetectPatches.size()));
-            last = applied;
+        if (GetProp("meow.antidetect") == "1") {
+            reapplyAntiDetect();
+            int applied = g_antidetect_applied.load();
+            if (applied != last) {
+                __android_log_print(ANDROID_LOG_INFO, "MEOW_ANTIDETECT", "applied=%d/%d", applied, static_cast<int>(kAntiDetectPatches.size()));
+                last = applied;
+            }
+        } else if (last != -3) {
+            last = -3;
         }
         sleep(1);
     }
@@ -180,11 +192,47 @@ int32_t _ANativeWindow_getHeight(ANativeWindow* window) {
 bool esp = false;
 bool drawEnemyBox = false;
 bool noRecoil = false;
-bool showMenu = true;
+bool showMenu = false;
 ImVec4 espLineColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 static float espMaxDistance = 999.0f;
 static float linePositionX = 0.5f;
 std::vector<Vector3> espPoints;
+static std::atomic<bool> g_external_menu{true};
+
+static void SyncExternalToggles() {
+    esp = GetPropBool("meow.esp", esp);
+    drawEnemyBox = GetPropBool("meow.box", drawEnemyBox);
+    noRecoil = GetPropBool("meow.norecoil", noRecoil);
+    bool wantInternalMenu = GetPropBool("meow.menu", false);
+    if (wantInternalMenu) {
+        g_external_menu.store(false);
+        showMenu = true;
+    } else {
+        g_external_menu.store(GetPropBool("meow.external", true));
+        if (g_external_menu.load()) showMenu = false;
+    }
+
+    static bool lastReapply = false;
+    static bool lastDump = false;
+    bool reapply = GetPropBool("meow.reapply", false);
+    bool dump = GetPropBool("meow.dump", false);
+    if (reapply && !lastReapply) {
+        reapplyAntiDetect();
+        __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "reapply=%d", g_antidetect_applied.load());
+    }
+    if (dump && !lastDump) {
+        __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "dump start");
+        auto il2cpp_handle = dlopen("libil2cpp.so", 4);
+        if (il2cpp_handle) {
+            il2cpp_dump(il2cpp_handle);
+            __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "dump done");
+        } else {
+            __android_log_print(ANDROID_LOG_INFO, "MEOW_MENU", "dump no handle");
+        }
+    }
+    lastReapply = reapply;
+    lastDump = dump;
+}
 
 void (*setpitchyaw)(float, float);
 Vector3 (*WorldToScreenPoint)(void*, Vector3, void*) = nullptr;
@@ -289,6 +337,7 @@ void DrawESP() {
 
 
 void DrawMenu() {
+    if (g_external_menu.load()) return;
     if (!showMenu) {
         ImGui::SetNextWindowBgAlpha(0.6f);
         ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_Once);
@@ -459,6 +508,11 @@ EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     }
 
     ImGuiIO &io = ImGui::GetIO();
+    static int syncFrame = 0;
+    if (++syncFrame >= 30) {
+        SyncExternalToggles();
+        syncFrame = 0;
+    }
     if (g_screenWidth && g_screenHeight) {
         io.DisplaySize = ImVec2((float)g_screenWidth(nullptr), (float)g_screenHeight(nullptr));
     }
