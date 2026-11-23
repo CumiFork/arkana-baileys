@@ -97,6 +97,7 @@ struct ESPBox {
     Vector3 bottom;
 };
 std::vector<ESPBox> espBoxes;
+static volatile bool g_il2cpp_ready = false;
 
 // No recoil (Free Fire, offsets from dump.cs)
 // Recoil.Apply:  void(float, float)   RVA 0x74BAA18
@@ -278,9 +279,6 @@ struct UnityEngine_Touch_Fields {
     float m_AltitudeAngle;
     float m_AzimuthAngle;
 };
-
-
-static volatile bool g_il2cpp_ready = false;
 
 EGLBoolean (*old_eglSwapBuffers)(EGLDisplay dpy, EGLSurface surface);
 EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
