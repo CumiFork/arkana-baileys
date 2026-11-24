@@ -2,3 +2,5 @@ node_modules/
 .opencode/
 .agents/
 *.log
+
+/v1/dump.cs
