@@ -93,6 +93,12 @@ void LoadConfig(const char* path) {
             else if (k == "room_show_id") s.room.showRoomId = parseBool(v);
 
             else if (k == "menu_open") s.menu.open = parseBool(v);
+            else if (k == "camera_ptr_rva") g_offsets.camera_ptr_rva = (uintptr_t)std::strtoull(v.c_str(), nullptr, 0);
+            else if (k == "camera_view_off") g_offsets.camera_view_off = (uintptr_t)std::strtoull(v.c_str(), nullptr, 0);
+            else if (k == "camera_proj_off") g_offsets.camera_proj_off = (uintptr_t)std::strtoull(v.c_str(), nullptr, 0);
+            else if (k == "camera_vp_off") g_offsets.camera_vp_off = (uintptr_t)std::strtoull(v.c_str(), nullptr, 0);
+            else if (k == "battle_manager_instance_rva") g_offsets.battle_manager_instance = (uintptr_t)std::strtoull(v.c_str(), nullptr, 0);
+            else if (k == "battle_manager_instance") g_offsets.battle_manager_instance = (uintptr_t)std::strtoull(v.c_str(), nullptr, 0);
         }
     }
 
@@ -167,6 +173,11 @@ void SaveConfig(const char* path) {
     out << "room_show_team=" << (s.room.showTeam ? 1 : 0) << "\n";
     out << "room_show_id=" << (s.room.showRoomId ? 1 : 0) << "\n";
     out << "menu_open=" << (s.menu.open ? 1 : 0) << "\n";
+    out << "battle_manager_instance_rva=" << g_offsets.battle_manager_instance << "\n";
+    out << "camera_ptr_rva=" << g_offsets.camera_ptr_rva << "\n";
+    out << "camera_view_off=" << g_offsets.camera_view_off << "\n";
+    out << "camera_proj_off=" << g_offsets.camera_proj_off << "\n";
+    out << "camera_vp_off=" << g_offsets.camera_vp_off << "\n";
 }
 
 void WriteStatus() {
@@ -188,6 +199,11 @@ void WriteStatus() {
     out << "retri_detail=" << i.retriDetail << "\n";
     out << "ts_ms=" << nowMs() << "\n";
     out << "menu_open=" << (s.menu.open ? 1 : 0) << "\n";
+    out << "battle_manager_instance_rva=" << g_offsets.battle_manager_instance << "\n";
+    out << "camera_ptr_rva=" << g_offsets.camera_ptr_rva << "\n";
+    out << "camera_view_off=" << g_offsets.camera_view_off << "\n";
+    out << "camera_proj_off=" << g_offsets.camera_proj_off << "\n";
+    out << "camera_vp_off=" << g_offsets.camera_vp_off << "\n";
     out << "enabled=" << (s.retri.enabled ? 1 : 0) << "\n";
     out << "cast_enabled=" << (s.retri.castEnabled ? 1 : 0) << "\n";
     out << "aim_enabled=" << (s.aim.enabled ? 1 : 0) << "\n";

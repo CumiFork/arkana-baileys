@@ -1,4 +1,4 @@
-name: Build ImGui NDK and Package SH
+name: Build v2-mod External (NDK + APK)
 
 on:
   push:
@@ -14,6 +14,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;26.1.10909125'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
 
       - name: Set up Android NDK
         id: ndk
@@ -33,35 +49,24 @@ jobs:
           fi
           echo "ndk_dir=$NDK_DIR" >> "$GITHUB_OUTPUT"
           echo "NDK_DIR=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
 
-      - name: Build arm64-v8a .so
+      - name: Build arm64-v8a .so (ndk-build)
         id: build
         run: |
           set -euo pipefail
           export PATH="$NDK_DIR:$PATH"
           SO_PATH=""
-
           if [ -f "v2-mod/src/main/jni/Android.mk" ]; then
             echo "Building with ndk-build (v2-mod)"
             pushd v2-mod/src/main/jni >/dev/null
             ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk NDK_APPLICATION_MK=Application.mk APP_ABI=arm64-v8a APP_PLATFORM=android-24 -j"$(nproc)"
             popd >/dev/null
             SO_PATH=$(find v2-mod/src/main/jni/libs/arm64-v8a -name '*.so' | head -n1)
-          elif [ -f "CMakeLists.txt" ]; then
-            echo "Building with CMake"
-            cmake -S . -B build-android \
-              -DCMAKE_TOOLCHAIN_FILE="$NDK_DIR/build/cmake/android.toolchain.cmake" \
-              -DANDROID_ABI=arm64-v8a \
-              -DANDROID_PLATFORM=android-24 \
-              -DANDROID_STL=c++_static \
-              -DCMAKE_BUILD_TYPE=Release
-            cmake --build build-android -j"$(nproc)"
-            SO_PATH=$(find build-android -name '*.so' | head -n1)
           else
-            echo "No Android.mk or CMakeLists.txt found" >&2
+            echo "No Android.mk found" >&2
             exit 1
           fi
-
           if [ -z "$SO_PATH" ] || [ ! -f "$SO_PATH" ]; then
             echo "Built .so not found" >&2
             exit 1
@@ -70,6 +75,13 @@ jobs:
           echo "Built: $SO_PATH"
           file "$SO_PATH"
 
+      - name: Build APK (external overlay)
+        working-directory: v2-mod
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$NDK_DIR}"
+          gradle assembleDebug --stacktrace
+
       - name: Package self-extracting run_imgui.sh
         run: |
           set -euo pipefail
@@ -77,12 +89,10 @@ jobs:
           B64=$(base64 -w0 "$SO_PATH")
           cat > run_imgui.sh <<'SCRIPT'
           #!/system/bin/sh
-          # Self-extracting ImGui/MLBB mod loader
+          # Self-extracting v2-mod external .so payload
           set -e
-
           OUT="/data/local/tmp/libimgui.so"
           TMP="/data/local/tmp/.libimgui.b64.$$"
-
           extract() {
             cat > "$TMP" <<'__PAYLOAD__'
           SCRIPT
@@ -93,19 +103,12 @@ jobs:
             rm -f "$TMP"
             chmod 755 "$OUT"
           }
-
           run_as_root() {
-            if command -v su >/dev/null 2>&1; then
-              su -c "$1"
-            else
-              sh -c "$1"
-            fi
+            if command -v su >/dev/null 2>&1; then su -c "$1"; else sh -c "$1"; fi
           }
-
           echo "[*] Extracting payload to $OUT"
+          extract
           if command -v su >/dev/null 2>&1; then
-            extract
-            # Try app lib staging for SELinux Enforcing (apk_data_file context)
             PKG="com.mobile.legends"
             PID=$(run_as_root "pidof $PKG 2>/dev/null | awk '{print \$1}'" | tr -d '\r' || true)
             if [ -n "$PID" ]; then
@@ -114,26 +117,25 @@ jobs:
                 DST="$LIBDIR/libimgui.so"
                 run_as_root "cp '$OUT' '$DST' && chmod 755 '$DST' && (chcon u:object_r:apk_data_file:s0 '$DST' 2>/dev/null || true)"
                 echo "[+] Staged: $DST"
-                echo "[*] Inject with your injector, e.g.: su -c 'inject $PID $DST'"
+                echo "[*] External overlay APK recommended. For legacy inject: su -c 'inject $PID $DST'"
                 exit 0
               fi
             fi
             echo "[+] Extracted: $OUT"
-            echo "[*] No running $PKG process found or lib dir unavailable. Load/inject $OUT manually."
           else
-            extract
-            echo "[+] Extracted: $OUT"
-            echo "[!] Root/su not detected; manual load required."
+            echo "[!] Root/su not detected; manual install required."
           fi
           SCRIPT
           chmod +x run_imgui.sh
           ls -lh run_imgui.sh
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: run-imgui-sh
-          path: run_imgui.sh
+          name: v2-mod-external
+          path: |
+            run_imgui.sh
+            v2-mod/build/outputs/apk/debug/*.apk
 
       - name: Publish GitHub Release (latest)
         uses: softprops/action-gh-release@v2
@@ -141,6 +143,8 @@ jobs:
           tag_name: latest
           name: latest
           make_latest: true
-          files: run_imgui.sh
+          files: |
+            run_imgui.sh
+            v2-mod/build/outputs/apk/debug/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

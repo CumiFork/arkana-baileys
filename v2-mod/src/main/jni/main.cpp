@@ -68,8 +68,20 @@ void* init_thread(void*) {
 
 }  // namespace
 
+static bool isTargetProcess() {
+    std::ifstream in("/proc/self/cmdline", std::ios::binary);
+    std::string cmd;
+    std::getline(in, cmd, '\0');
+    return cmd.find("com.mobile.legends") != std::string::npos;
+}
+
 __attribute__((constructor))
 void lib_main() {
+    if (!isTargetProcess()) {
+        // APK/external overlay process: external engine started by JNI bridge.
+        LOGI("External overlay process detected; skipping in-process hooks");
+        return;
+    }
     pthread_t t;
     if (pthread_create(&t, nullptr, init_thread, nullptr) == 0) {
         pthread_detach(t);

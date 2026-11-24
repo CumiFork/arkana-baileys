@@ -1,0 +1,50 @@
+plugins {
+    id 'com.android.application' version '8.5.2'
+}
+
+android {
+    namespace "com.android.support"
+    compileSdkVersion 34
+
+    defaultConfig {
+        applicationId "com.android.support.v2ext"
+        minSdkVersion 24
+        targetSdkVersion 34
+        versionCode 1
+        versionName "2.0-external"
+
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+
+        externalNativeBuild {
+            ndkBuild {
+                arguments "APP_STL=c++_static", "APP_PLATFORM=android-24", "APP_ABI=arm64-v8a"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    externalNativeBuild {
+        ndkBuild {
+            path file('src/main/jni/Android.mk')
+        }
+    }
+
+    ndkVersion = '26.1.10909125'
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+}

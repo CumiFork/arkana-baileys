@@ -100,6 +100,13 @@ struct Offsets {
     uintptr_t camera_get_main = 0x0;        // TODO verify
     uintptr_t transform_get_position = 0x0;  // TODO verify
     uintptr_t component_get_transform = 0x0; // TODO verify
+
+    // External mode: camera View-Projection Matrix
+    uintptr_t camera_ptr_rva = 0x0;      // RVA from libil2cpp base to camera pointer/static
+    uintptr_t camera_view_off = 0xD8;    // view/worldToCamera matrix offset from camera native obj
+    uintptr_t camera_proj_off = 0xC0;    // projection matrix offset from camera native obj
+    uintptr_t camera_vp_off = 0x0;       // direct VP matrix offset (if non-zero, used directly)
+    uintptr_t battle_manager_instance_rva = 0x0; // alias/config
 };
 
 struct RuntimeInfo {

@@ -9,6 +9,8 @@
 #include "imgui_impl_opengl3.h"
 #include "feature_state.h"
 #include "game_api.h"
+#include "external_engine.h"
+#include "mem_reader.h"
 
 #define LOG_TAG "MEOW_V2"
 
@@ -81,7 +83,8 @@ void DrawOverlayInfo() {
         if (s.room.showRoomId) ImGui::Text("Room: %llu", (unsigned long long)info.roomId);
     }
     ImGui::Text("Monsters: %d  Players: %d  Enemies: %d", info.monsterCount, info.playerCount, info.enemyCount);
-    ImGui::TextDisabled("Menu: %s (set menu_open in config)", s.menu.open ? "open" : "hidden");
+    ImGui::Text("Mode: External | VMatrix: %s", ext::Snapshot().hasMatrix ? "OK" : "NO");
+    ImGui::TextDisabled("Menu: %s", s.menu.open ? "open" : "hidden");
     ImGui::End();
 }
 
@@ -117,7 +120,7 @@ void DrawMenu() {
         if (ImGui::BeginTabItem("Auto Retribution")) {
             ImGui::Checkbox("Enable Auto Retribution", &s.retri.enabled);
             ImGui::Checkbox("Real cast (safety gate, TODO)", &s.retri.castEnabled);
-            HelpMarker("Cast invoke is not implemented yet. When enabled, it only marks cast_attempted/not_implemented after verification path is added.");
+            HelpMarker("External mode: detection/read-only. Real cast requires in-process injection and is not available in this external overlay.");
             ImGui::SliderInt("HP threshold %%", &s.retri.hpPercent, 1, 100);
             ImGui::SliderInt("Cooldown ms", &s.retri.cooldownMs, 0, 5000);
             ImGui::SliderInt("Max monster scan", &s.retri.maxScan, 1, 256);
@@ -145,7 +148,7 @@ void DrawMenu() {
 
         if (ImGui::BeginTabItem("Aim")) {
             ImGui::Checkbox("Enable aim assist", &s.aim.enabled);
-            HelpMarker("Aim assist requires verified camera/world-to-screen/aim-write offsets for current build. Currently scaffolded; no aim write until offsets are set.");
+            HelpMarker("External mode: target detection only. Aim/write requires in-process input injection; not performed by external overlay.");
             ImGui::Checkbox("Beatrix only", &s.aim.beatrixOnly);
             ImGui::Checkbox("Basic attack mode", &s.aim.basicAttackOnly);
             ImGui::Checkbox("Enemy only", &s.aim.targetEnemyOnly);
@@ -157,7 +160,7 @@ void DrawMenu() {
 
         if (ImGui::BeginTabItem("ESP")) {
             ImGui::Checkbox("Enable ESP", &s.esp.enabled);
-            HelpMarker("ESP requires verified camera/world-to-screen/transform offsets. Player list uses BattleManager.m_ShowPlayers (0x70) and camp from ShowEntity.m_EntityCampType (0xD0).");
+            HelpMarker("External ESP reads /proc/<pid>/mem as root. Requires View-Projection Matrix and entity offsets configured for current build.");
             ImGui::Checkbox("Box", &s.esp.showBox);
             ImGui::Checkbox("Line", &s.esp.showLine);
             ImGui::Checkbox("Name", &s.esp.showName);
@@ -186,8 +189,18 @@ void DrawMenu() {
         if (ImGui::BeginTabItem("Settings")) {
             ImGui::Checkbox("Debug log", &s.debugLog);
             ImGui::SliderInt("Config reload sec", &s.configReloadSec, 0, 30);
+            ImGui::Text("Mode: External (read-only /proc/pid/mem)");
             ImGui::Text("Hook: %s", info.hookState.c_str());
             ImGui::Text("Detail: %s", info.hookDetail.c_str());
+            ext::FrameData f = ext::Snapshot();
+            ImGui::Separator();
+            ImGui::Text("View-Projection Matrix: %s", f.hasMatrix ? "RESOLVED" : "NOT RESOLVED");
+            if (f.hasMatrix) {
+                ImGui::TextDisabled("VP[0..3]: %.3f %.3f %.3f %.3f", f.vp[0], f.vp[1], f.vp[2], f.vp[3]);
+                ImGui::TextDisabled("VP[4..7]: %.3f %.3f %.3f %.3f", f.vp[4], f.vp[5], f.vp[6], f.vp[7]);
+            }
+            ImGui::TextDisabled("Camera ptr: 0x%llx", (unsigned long long)f.camera);
+            ImGui::TextDisabled("Set camera_ptr_rva/camera_view_off/camera_proj_off in config if needed.");
             ImGui::Separator();
             if (ImGui::Button("Save config")) {
                 std::lock_guard<std::mutex> lock(v2::StateMutex());
@@ -308,3 +321,94 @@ void DrawESP() {
 }
 
 }  // namespace v2menu
+
+
+void DrawExternalESP(const ext::FrameData& frame) {
+    v2::FeatureState s;
+    v2::RuntimeInfo info;
+    {
+        std::lock_guard<std::mutex> lock(v2::StateMutex());
+        s = v2::State();
+    }
+    {
+        std::lock_guard<std::mutex> lock(v2::InfoMutex());
+        info = v2::Info();
+    }
+    if (!s.esp.enabled) return;
+    if (!frame.battleManager || !frame.hasMatrix) return;
+
+    auto& off = v2::GameOffsets();
+    auto readPtr = [](uintptr_t addr) -> uintptr_t { return ext::read<uintptr_t>(addr, 0); };
+    auto readInt = [](uintptr_t addr) -> int { return ext::read<int>(addr, 0); };
+    auto readBool = [](uintptr_t addr) -> bool { return ext::read<uint8_t>(addr, 0) != 0; };
+
+    uintptr_t players = readPtr(frame.battleManager + off.bm_show_players);
+    if (!players) return;
+    int count = readInt(players + 0x18);
+    if (count < 0) count = 0;
+    if (count > 32) count = 32;
+    uintptr_t items = readPtr(players + 0x10);
+    if (!items) return;
+
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    ImVec2 disp = ImGui::GetIO().DisplaySize;
+
+    for (int i = 0; i < count; ++i) {
+        uintptr_t p = readPtr(items + 0x20 + (uintptr_t)i * sizeof(uintptr_t));
+        if (!p || p == frame.localPlayer) continue;
+        if (readBool(p + off.show_entity_dead)) continue;
+
+        int camp = readInt(p + off.show_entity_camp);
+        bool isEnemy = (frame.localCamp != 0 && camp != 0 && camp != frame.localCamp);
+        if (s.esp.hideTeammates && !isEnemy) continue;
+        if (s.esp.enemyOnly && !isEnemy) continue;
+
+        // Read position: try transform->position; fallback to entity coord fields if configured
+        game::Vec3 wp{};
+        uintptr_t transform = readPtr(p + off.show_entity_transform);
+        if (transform && off.transform_get_position) {
+            // can't invoke externally; read transform position fields common offsets
+        }
+        // Common Unity Transform position: at 0x90 in Transform component? build dependent.
+        // Fallback: try reading from entity fields used in some MLBB builds: 0x240/0x244/0x248 or 0x1F0
+        if (wp.x == 0 && wp.y == 0 && wp.z == 0) {
+            // Try common position offsets on ShowEntity
+            uintptr_t posBase = p + 0x238; // common m_Position
+            wp.x = ext::read<float>(posBase + 0, 0.0f);
+            wp.y = ext::read<float>(posBase + 4, 0.0f);
+            wp.z = ext::read<float>(posBase + 8, 0.0f);
+        }
+        if (wp.x == 0 && wp.y == 0 && wp.z == 0) continue;
+
+        game::Vec3 sp{};
+        if (!ext::WorldToScreen(frame, wp, sp)) continue;
+        if (sp.x < -100 || sp.x > disp.x + 100 || sp.y < -100 || sp.y > disp.y + 100) continue;
+
+        float headY = sp.y - 60.0f;
+        float footY = sp.y + 10.0f;
+        float wbox = 40.0f;
+        ImU32 col = isEnemy ? IM_COL32(255, 80, 80, 220) : IM_COL32(80, 200, 255, 220);
+
+        if (s.esp.showBox) dl->AddRect(ImVec2(sp.x - wbox/2, headY), ImVec2(sp.x + wbox/2, footY), col, 2.0f, 0, 1.5f);
+        if (s.esp.showLine) dl->AddLine(ImVec2(disp.x * 0.5f, disp.y), ImVec2(sp.x, footY), col, 1.2f);
+        if (s.esp.showHp) {
+            int hp = readInt(p + off.show_entity_hp);
+            int hpMax = readInt(p + off.show_entity_hp_max);
+            if (hpMax > 0) {
+                float ratio = (float)hp / (float)hpMax;
+                if (ratio < 0) ratio = 0; if (ratio > 1) ratio = 1;
+                float barH = (footY - headY);
+                dl->AddRectFilled(ImVec2(sp.x - wbox/2 - 6, headY), ImVec2(sp.x - wbox/2 - 2, footY), IM_COL32(40,40,40,180));
+                dl->AddRectFilled(ImVec2(sp.x - wbox/2 - 6, footY - barH*ratio), ImVec2(sp.x - wbox/2 - 2, footY), IM_COL32(80,220,80,220));
+            }
+        }
+        if (s.esp.showName) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%s %d", isEnemy ? "ENEMY" : "TEAM", camp);
+            dl->AddText(ImVec2(sp.x - wbox/2, headY - 16), col, buf);
+        }
+        if (s.esp.showDistance && frame.localPlayer) {
+            // distance not computed without local pos; skip for now
+        }
+    }
+}
