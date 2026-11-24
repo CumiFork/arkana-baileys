@@ -1,0 +1,34 @@
+name: Build v2-mod
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'v2-mod/**'
+      - '.github/workflows/build-v2-mod.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Android NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;26.1.10909125'
+
+      - name: Build native lib
+        run: |
+          export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/26.1.10909125}"
+          export PATH="$ANDROID_NDK_HOME:$PATH"
+          cd v2-mod/src/main/jni
+          ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk NDK_APPLICATION_MK=Application.mk -j4
+
+      - name: Upload libs
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-mod-libs
+          path: v2-mod/src/main/jni/libs/**/*.so
