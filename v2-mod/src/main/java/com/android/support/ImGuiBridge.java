@@ -9,6 +9,7 @@ public final class ImGuiBridge {
     public static native void nativeOnDrawFrame();
     public static native void nativeOnTouch(float x, float y, int action);
     public static native boolean nativeIsMenuVisible();
+    public static native void nativeSetMenuVisible(boolean visible);
     public static native boolean nativeWantCapture();
     public static native void nativeSetRootStatus(String status);
     public static native void nativeOnSurfaceDestroyed();

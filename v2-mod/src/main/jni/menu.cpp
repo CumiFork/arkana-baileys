@@ -84,7 +84,11 @@ void DrawOverlayInfo() {
     }
     ImGui::Text("Monsters: %d  Players: %d  Enemies: %d", info.monsterCount, info.playerCount, info.enemyCount);
     ImGui::Text("Mode: External | VMatrix: %s", ext::Snapshot().hasMatrix ? "OK" : "NO");
-    ImGui::TextDisabled("Menu: %s", s.menu.open ? "open" : "hidden");
+    if (ImGui::Button(s.menu.open ? "Hide Menu" : "Open Menu")) {
+        s.menu.open = !s.menu.open;
+        std::lock_guard<std::mutex> lock(v2::StateMutex());
+        v2::State().menu.open = s.menu.open;
+    }
     ImGui::End();
 }
 

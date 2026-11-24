@@ -17,7 +17,9 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.BufferedReader;
@@ -33,10 +35,17 @@ public class Menu extends Service {
 
     private WindowManager windowManager;
     private GLSurfaceView glSurfaceView;
+    private TextView toggleView;
     private WindowManager.LayoutParams overlayParams;
+    private WindowManager.LayoutParams toggleParams;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final Runnable restoreTouchableRunnable = new Runnable() {
-        @Override public void run() { setOverlayTouchable(true); }
+    private boolean menuVisible = true;
+
+    private final Runnable pollMenuState = new Runnable() {
+        @Override public void run() {
+            updateVisibilityState();
+            handler.postDelayed(this, 300);
+        }
     };
 
     @Override public IBinder onBind(Intent intent) { return null; }
@@ -54,18 +63,20 @@ public class Menu extends Service {
             return;
         }
         createOverlay();
+        createToggle();
         refreshRootStatus();
+        handler.post(pollMenuState);
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
 
     @Override
     public void onDestroy() {
-        handler.removeCallbacks(restoreTouchableRunnable);
-        try {
-            if (glSurfaceView != null && windowManager != null) windowManager.removeView(glSurfaceView);
-        } catch (Throwable ignored) {}
+        handler.removeCallbacksAndMessages(null);
+        try { if (glSurfaceView != null && windowManager != null) windowManager.removeView(glSurfaceView); } catch (Throwable ignored) {}
+        try { if (toggleView != null && windowManager != null) windowManager.removeView(toggleView); } catch (Throwable ignored) {}
         glSurfaceView = null;
+        toggleView = null;
         super.onDestroy();
     }
 
@@ -83,6 +94,12 @@ public class Menu extends Service {
                 .build();
         if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         else startForeground(NOTIF_ID, notif);
+    }
+
+    private int windowType() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
     }
 
     private void createOverlay() {
@@ -115,13 +132,10 @@ public class Menu extends Service {
             }
         });
 
-        int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE;
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
-                type,
+                windowType(),
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
         );
@@ -132,30 +146,88 @@ public class Menu extends Service {
         windowManager.addView(glView, params);
     }
 
+    private void createToggle() {
+        TextView tv = new TextView(this);
+        tv.setText("MENU");
+        tv.setTextSize(12f);
+        tv.setPadding(dp(10), dp(8), dp(10), dp(8));
+        tv.setBackgroundColor(0xCC222222);
+        tv.setTextColor(0xFFFFFFFF);
+        tv.setOnClickListener(v -> {
+            try { ImGuiBridge.nativeSetMenuVisible(true); } catch (Throwable ignored) {}
+            menuVisible = true;
+            applyVisibility();
+        });
+
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                windowType(),
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+        );
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.x = dp(8);
+        params.y = dp(80);
+        toggleView = tv;
+        toggleParams = params;
+        windowManager.addView(tv, params);
+        applyVisibility();
+    }
+
     private boolean handleOverlayTouch(MotionEvent event) {
         float x = event.getRawX();
         float y = event.getRawY();
         int action = event.getActionMasked();
+        try { ImGuiBridge.nativeOnTouch(x, y, action); } catch (Throwable t) { Log.e(TAG, "nativeOnTouch", t); }
+
         boolean capture = false;
+        boolean visible = menuVisible;
         try { capture = ImGuiBridge.nativeWantCapture(); } catch (Throwable ignored) {}
-        if (!capture && action == MotionEvent.ACTION_DOWN) {
-            setOverlayTouchable(false);
-            handler.removeCallbacks(restoreTouchableRunnable);
-            handler.postDelayed(restoreTouchableRunnable, 250);
-            return false;
-        }
-        if (capture) {
+        try { visible = ImGuiBridge.nativeIsMenuVisible(); } catch (Throwable ignored) {}
+        menuVisible = visible;
+
+        if (visible) {
             setOverlayTouchable(true);
-            handler.removeCallbacks(restoreTouchableRunnable);
-            try { ImGuiBridge.nativeOnTouch(x, y, action); } catch (Throwable t) { Log.e(TAG, "nativeOnTouch", t); }
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) handler.postDelayed(restoreTouchableRunnable, 150);
             return true;
         }
+
+        // Menu hidden: if ImGui wants capture (status/toggle button), keep it; else passthrough
+        if (capture) {
+            setOverlayTouchable(true);
+            return true;
+        }
+
+        setOverlayTouchable(false);
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-            handler.removeCallbacks(restoreTouchableRunnable);
-            handler.postDelayed(restoreTouchableRunnable, 50);
+            handler.postDelayed(this::restoreOverlayTouchableIfMenuVisible, 60);
+        } else {
+            handler.postDelayed(this::restoreOverlayTouchableIfMenuVisible, 250);
         }
         return false;
+    }
+
+    private void restoreOverlayTouchableIfMenuVisible() {
+        boolean visible = menuVisible;
+        try { visible = ImGuiBridge.nativeIsMenuVisible(); } catch (Throwable ignored) {}
+        menuVisible = visible;
+        applyVisibility();
+    }
+
+    private void updateVisibilityState() {
+        boolean visible = menuVisible;
+        try { visible = ImGuiBridge.nativeIsMenuVisible(); } catch (Throwable ignored) {}
+        if (visible != menuVisible) {
+            menuVisible = visible;
+            applyVisibility();
+        } else {
+            applyVisibility();
+        }
+    }
+
+    private void applyVisibility() {
+        setOverlayTouchable(menuVisible);
+        if (toggleView != null) toggleView.setVisibility(menuVisible ? View.GONE : View.VISIBLE);
     }
 
     private void setOverlayTouchable(boolean touchable) {
@@ -183,4 +255,6 @@ public class Menu extends Service {
             handler.post(() -> { try { ImGuiBridge.nativeSetRootStatus(s); } catch (Throwable ignored) {} });
         }).start();
     }
+
+    private int dp(int v) { return Math.round(getResources().getDisplayMetrics().density * v); }
 }

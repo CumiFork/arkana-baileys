@@ -113,6 +113,12 @@ Java_com_android_support_ImGuiBridge_nativeIsMenuVisible(JNIEnv*, jclass) {
     return v2::State().menu.open ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT void JNICALL
+Java_com_android_support_ImGuiBridge_nativeSetMenuVisible(JNIEnv*, jclass, jboolean visible) {
+    std::lock_guard<std::mutex> lk(v2::StateMutex());
+    v2::State().menu.open = (visible == JNI_TRUE);
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_android_support_ImGuiBridge_nativeWantCapture(JNIEnv*, jclass) {
     std::lock_guard<std::mutex> lk(g_mu);
