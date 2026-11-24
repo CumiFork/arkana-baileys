@@ -1,0 +1,146 @@
+name: Build ImGui NDK and Package SH
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Android NDK
+        id: ndk
+        run: |
+          set -euo pipefail
+          NDK_DIR=""
+          if [ -n "${ANDROID_NDK_HOME:-}" ] && [ -d "$ANDROID_NDK_HOME" ]; then
+            NDK_DIR="$ANDROID_NDK_HOME"
+          elif [ -n "${ANDROID_NDK_ROOT:-}" ] && [ -d "$ANDROID_NDK_ROOT" ]; then
+            NDK_DIR="$ANDROID_NDK_ROOT"
+          elif [ -d "$ANDROID_HOME/ndk" ]; then
+            NDK_DIR=$(ls -1d "$ANDROID_HOME"/ndk/* 2>/dev/null | sort -V | tail -n1 || true)
+          fi
+          if [ -z "$NDK_DIR" ] || [ ! -d "$NDK_DIR" ]; then
+            echo "NDK not found on runner" >&2
+            exit 1
+          fi
+          echo "ndk_dir=$NDK_DIR" >> "$GITHUB_OUTPUT"
+          echo "NDK_DIR=$NDK_DIR" >> "$GITHUB_ENV"
+
+      - name: Build arm64-v8a .so
+        id: build
+        run: |
+          set -euo pipefail
+          export PATH="$NDK_DIR:$PATH"
+          SO_PATH=""
+
+          if [ -f "v2-mod/src/main/jni/Android.mk" ]; then
+            echo "Building with ndk-build (v2-mod)"
+            pushd v2-mod/src/main/jni >/dev/null
+            ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk NDK_APPLICATION_MK=Application.mk APP_ABI=arm64-v8a APP_PLATFORM=android-24 -j"$(nproc)"
+            popd >/dev/null
+            SO_PATH=$(find v2-mod/src/main/jni/libs/arm64-v8a -name '*.so' | head -n1)
+          elif [ -f "CMakeLists.txt" ]; then
+            echo "Building with CMake"
+            cmake -S . -B build-android \
+              -DCMAKE_TOOLCHAIN_FILE="$NDK_DIR/build/cmake/android.toolchain.cmake" \
+              -DANDROID_ABI=arm64-v8a \
+              -DANDROID_PLATFORM=android-24 \
+              -DANDROID_STL=c++_static \
+              -DCMAKE_BUILD_TYPE=Release
+            cmake --build build-android -j"$(nproc)"
+            SO_PATH=$(find build-android -name '*.so' | head -n1)
+          else
+            echo "No Android.mk or CMakeLists.txt found" >&2
+            exit 1
+          fi
+
+          if [ -z "$SO_PATH" ] || [ ! -f "$SO_PATH" ]; then
+            echo "Built .so not found" >&2
+            exit 1
+          fi
+          echo "so_path=$SO_PATH" >> "$GITHUB_OUTPUT"
+          echo "Built: $SO_PATH"
+          file "$SO_PATH"
+
+      - name: Package self-extracting run_imgui.sh
+        run: |
+          set -euo pipefail
+          SO_PATH="${{ steps.build.outputs.so_path }}"
+          B64=$(base64 -w0 "$SO_PATH")
+          cat > run_imgui.sh <<'SCRIPT'
+          #!/system/bin/sh
+          # Self-extracting ImGui/MLBB mod loader
+          set -e
+
+          OUT="/data/local/tmp/libimgui.so"
+          TMP="/data/local/tmp/.libimgui.b64.$$"
+
+          extract() {
+            cat > "$TMP" <<'__PAYLOAD__'
+          SCRIPT
+          printf '%s\n' "$B64" >> run_imgui.sh
+          cat >> run_imgui.sh <<'SCRIPT'
+          __PAYLOAD__
+            base64 -d "$TMP" > "$OUT" 2>/dev/null || busybox base64 -d "$TMP" > "$OUT"
+            rm -f "$TMP"
+            chmod 755 "$OUT"
+          }
+
+          run_as_root() {
+            if command -v su >/dev/null 2>&1; then
+              su -c "$1"
+            else
+              sh -c "$1"
+            fi
+          }
+
+          echo "[*] Extracting payload to $OUT"
+          if command -v su >/dev/null 2>&1; then
+            extract
+            # Try app lib staging for SELinux Enforcing (apk_data_file context)
+            PKG="com.mobile.legends"
+            PID=$(run_as_root "pidof $PKG 2>/dev/null | awk '{print \$1}'" | tr -d '\r' || true)
+            if [ -n "$PID" ]; then
+              LIBDIR=$(run_as_root "ls -d /data/app/*/${PKG}*/lib/arm64 2>/dev/null | head -1" | tr -d '\r' || true)
+              if [ -n "$LIBDIR" ]; then
+                DST="$LIBDIR/libimgui.so"
+                run_as_root "cp '$OUT' '$DST' && chmod 755 '$DST' && (chcon u:object_r:apk_data_file:s0 '$DST' 2>/dev/null || true)"
+                echo "[+] Staged: $DST"
+                echo "[*] Inject with your injector, e.g.: su -c 'inject $PID $DST'"
+                exit 0
+              fi
+            fi
+            echo "[+] Extracted: $OUT"
+            echo "[*] No running $PKG process found or lib dir unavailable. Load/inject $OUT manually."
+          else
+            extract
+            echo "[+] Extracted: $OUT"
+            echo "[!] Root/su not detected; manual load required."
+          fi
+          SCRIPT
+          chmod +x run_imgui.sh
+          ls -lh run_imgui.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-imgui-sh
+          path: run_imgui.sh
+
+      - name: Publish GitHub Release (latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: latest
+          make_latest: true
+          files: run_imgui.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

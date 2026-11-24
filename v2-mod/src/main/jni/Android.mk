@@ -28,7 +28,7 @@ FILE_LIST += $(wildcard $(LOCAL_PATH)/Il2Cpp/*.cpp)
 LOCAL_SRC_FILES := $(FILE_LIST:$(LOCAL_PATH)/%=%)
 
 LOCAL_STATIC_LIBRARIES := dobby
-LOCAL_LDLIBS := -llog -landroid -lEGL -lGLESv3
+LOCAL_LDLIBS := -llog -landroid -lEGL -lGLESv3 -ldl
 LOCAL_CPPFLAGS := -std=c++17 -fvisibility=hidden -fno-exceptions -fpermissive -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 LOCAL_CFLAGS := -fvisibility=hidden
 

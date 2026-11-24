@@ -48,7 +48,7 @@ void SetupImGui() {
     style.FramePadding = ImVec2(6, 4);
     style.ItemSpacing = ImVec2(8, 6);
     style.ScaleAllSizes(1.5f);
-    ImGui_ImplOpenGL3_Init("#version 100");
+    ImGui_ImplOpenGL3_Init("#version 300 es");
     g_setup = true;
     __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "ImGui setup done");
 }

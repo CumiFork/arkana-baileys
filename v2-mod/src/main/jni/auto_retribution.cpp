@@ -272,9 +272,11 @@ void SetOffsets(const Offsets& off) {
 }
 
 void WriteStatus(const char* state, const char* detail) {
-    std::lock_guard<std::mutex> lk(v2::InfoMutex());
-    v2::Info().hookState = state ? state : "";
-    v2::Info().hookDetail = detail ? detail : "";
+    {
+        std::lock_guard<std::mutex> lk(v2::InfoMutex());
+        v2::Info().hookState = state ? state : "";
+        v2::Info().hookDetail = detail ? detail : "";
+    }
     v2::WriteStatus();
 }
 

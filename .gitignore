@@ -3,6 +3,11 @@ node_modules/
 .agents/
 *.log
 
-/v1/dump.cs
+build/
+obj/
+libs/
+.cxx/
+.cmake/
 
+# Local dumps
 /v1/dump.cs
