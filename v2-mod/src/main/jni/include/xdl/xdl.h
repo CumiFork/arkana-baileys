@@ -37,15 +37,6 @@
 #include <stddef.h>
 
 #ifdef __cplusplus
-
-#if defined (__LP64__)
-#define XDL_DEFAULT  __BIONIC_CAST(reinterpret_cast, void*, 0)
-#define XDL_NEXT     __BIONIC_CAST(reinterpret_cast, void*, -1L)
-#else
-#define XDL_DEFAULT  __BIONIC_CAST(reinterpret_cast, void*, 0xffffffff)
-#define XDL_NEXT     __BIONIC_CAST(reinterpret_cast, void*, 0xfffffffe)
-#endif
-
 extern "C" {
 #endif
 

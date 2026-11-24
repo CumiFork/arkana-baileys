@@ -18,12 +18,11 @@ std::string revhexstr(std::string hex) {
 
 std::string fixhex(std::string str) {
     std::string out = str;
-    std::string::size_type tmp;
-    if (out.find(std::string("0x")) != -1) {
-        tmp = out.find(std::string("0x"));
-        out.replace(tmp, 2, std::string(""));
+    std::string::size_type tmp = out.find("0x");
+    if (tmp != std::string::npos) {
+        out.replace(tmp, 2, "");
     }
-    for (int i = out.length() - 1; i >= 0; --i) {
+    for (int i = static_cast<int>(out.length()) - 1; i >= 0; --i) {
         if (out[i] == ' ')
             out.erase(i, 1);
     }
@@ -45,18 +44,13 @@ bool Is_B_BL_Hex(std::string hex) {
 }
 
 std::string readHexStrFromMem(const void *addr, size_t len) {
-    char temp[len];
-    memset(temp, 0, len);
-    const size_t bufferLen = len * 2 + 1;
-    char buffer[bufferLen];
-    memset(buffer, 0, bufferLen);
-    std::string ret;
-    if (memcpy(temp, addr, len) == NULL)
-        return ret;
-    for (int i = 0; i < len; i++) {
-        sprintf(&buffer[i * 2], "%02X", (unsigned char) temp[i]);
+    std::vector<unsigned char> temp(len);
+    if (!addr || memcpy(temp.data(), addr, len) == NULL)
+        return {};
+    std::string ret(len * 2, '\0');
+    for (size_t i = 0; i < len; i++) {
+        sprintf(&ret[i * 2], "%02X", temp[i]);
     }
-    ret += buffer;
     return ret;
 }
 
