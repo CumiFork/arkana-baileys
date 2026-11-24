@@ -320,9 +320,6 @@ void DrawESP() {
     }
 }
 
-}  // namespace v2menu
-
-
 void DrawExternalESP(const ext::FrameData& frame) {
     v2::FeatureState s;
     v2::RuntimeInfo info;
@@ -412,3 +409,5 @@ void DrawExternalESP(const ext::FrameData& frame) {
         }
     }
 }
+
+}  // namespace v2menu

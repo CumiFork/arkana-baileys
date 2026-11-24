@@ -67,7 +67,6 @@ bool readMatrix(uintptr_t addr, float out[16]) {
 
 uintptr_t readPtr(uintptr_t addr) { return read<uintptr_t>(addr, 0); }
 int readInt(uintptr_t addr) { return read<int>(addr, 0); }
-uint32_t readU32(uintptr_t addr) { return read<uint32_t>(addr, 0); }
 uint64_t readU64(uintptr_t addr) { return read<uint64_t>(addr, 0); }
 bool readBool(uintptr_t addr) { return read<uint8_t>(addr, 0) != 0; }
 
