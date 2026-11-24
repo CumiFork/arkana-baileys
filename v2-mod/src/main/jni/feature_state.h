@@ -115,6 +115,8 @@ struct RuntimeInfo {
     int playerCount = 0;
     int enemyCount = 0;
     long long lastUpdateMs = 0;
+    uintptr_t battleManager = 0;
+    uintptr_t localPlayer = 0;
 };
 
 FeatureState& State();

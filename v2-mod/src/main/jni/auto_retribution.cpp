@@ -113,6 +113,11 @@ void hooked_battle_update(void* instance) {
     if (s.retri.cooldownMs > 0 && (ms - last) < s.retri.cooldownMs) return;
 
     void* localPlayer = readPtr<void*>(instance, off.bm_local_player_show);
+    {
+        std::lock_guard<std::mutex> lk(v2::InfoMutex());
+        v2::Info().battleManager = reinterpret_cast<uintptr_t>(instance);
+        v2::Info().localPlayer = reinterpret_cast<uintptr_t>(localPlayer);
+    }
 
     // Room/player info (best-effort, uses dump-derived offsets)
     if (localPlayer) {

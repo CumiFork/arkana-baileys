@@ -13,6 +13,7 @@
 #include "auto_retribution.h"
 #include "menu.h"
 #include "feature_state.h"
+#include "game_api.h"
 
 #define LOG_TAG "MEOW_V2"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -60,6 +61,7 @@ void* init_thread(void*) {
 
     LOGI("libil2cpp.so base=%" PRIxPTR, base);
     AutoRetribution::WriteStatus("init", "libil2cpp_found");
+    game::Resolve(base);
     AutoRetribution::InstallHooks(base);
     return nullptr;
 }

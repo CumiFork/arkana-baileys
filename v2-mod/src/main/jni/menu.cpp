@@ -8,6 +8,7 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "feature_state.h"
+#include "game_api.h"
 
 #define LOG_TAG "MEOW_V2"
 
@@ -213,6 +214,96 @@ void DrawMenu() {
     {
         std::lock_guard<std::mutex> lock(v2::StateMutex());
         v2::State() = s;
+    }
+}
+
+void DrawESP() {
+    v2::FeatureState s;
+    v2::RuntimeInfo info;
+    {
+        std::lock_guard<std::mutex> lock(v2::StateMutex());
+        s = v2::State();
+    }
+    {
+        std::lock_guard<std::mutex> lock(v2::InfoMutex());
+        info = v2::Info();
+    }
+    if (!s.esp.enabled) return;
+    if (!info.battleManager) return;
+
+    void* cam = game::GetMainCamera();
+    if (!cam) return;
+
+    auto* bm = reinterpret_cast<void*>(info.battleManager);
+    auto* local = reinterpret_cast<void*>(info.localPlayer);
+    auto readPtr = [](void* obj, uintptr_t off) -> void* {
+        if (!obj || !off) return nullptr;
+        return *reinterpret_cast<void**>(reinterpret_cast<uintptr_t>(obj) + off);
+    };
+    auto readInt = [](void* obj, uintptr_t off) -> int {
+        if (!obj) return 0;
+        return *reinterpret_cast<int*>(reinterpret_cast<uintptr_t>(obj) + off);
+    };
+    auto readBool = [](void* obj, uintptr_t off) -> bool {
+        if (!obj) return false;
+        return *reinterpret_cast<bool*>(reinterpret_cast<uintptr_t>(obj) + off);
+    };
+
+    void* players = readPtr(bm, v2::GameOffsets().bm_show_players);
+    if (!players) return;
+    int count = readInt(players, 0x18);
+    if (count < 0 || count > 32) count = (count < 0) ? 0 : 32;
+
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    ImVec2 disp = ImGui::GetIO().DisplaySize;
+    int localCamp = info.localCamp;
+
+    for (int i = 0; i < count; ++i) {
+        void* items = readPtr(players, 0x10);
+        if (!items) break;
+        void* p = readPtr(items, 0x20 + (uintptr_t)i * sizeof(void*));
+        if (!p || p == local) continue;
+        if (readBool(p, v2::GameOffsets().show_entity_dead)) continue;
+
+        int camp = readInt(p, v2::GameOffsets().show_entity_camp);
+        bool isEnemy = (localCamp != 0 && camp != 0 && camp != localCamp);
+        if (s.esp.hideTeammates && !isEnemy) continue;
+        if (s.esp.enemyOnly && !isEnemy) continue;
+
+        game::Vec3 wp = game::GetPosition(p);
+        if (wp.x == 0 && wp.y == 0 && wp.z == 0) continue;
+        game::Vec3 sp{};
+        if (!game::WorldToScreen(cam, wp, sp)) continue;
+        if (sp.x < 0 || sp.x > disp.x || sp.y < 0 || sp.y > disp.y) continue;
+
+        float headY = sp.y - 60.0f;
+        float footY = sp.y + 10.0f;
+        float w = 40.0f;
+        ImU32 col = isEnemy ? IM_COL32(255, 80, 80, 220) : IM_COL32(80, 200, 255, 220);
+
+        if (s.esp.showBox) {
+            dl->AddRect(ImVec2(sp.x - w/2, headY), ImVec2(sp.x + w/2, footY), col, 2.0f, 0, 1.5f);
+        }
+        if (s.esp.showLine) {
+            dl->AddLine(ImVec2(disp.x * 0.5f, disp.y), ImVec2(sp.x, footY), col, 1.2f);
+        }
+        if (s.esp.showHp) {
+            int hp = readInt(p, v2::GameOffsets().show_entity_hp);
+            int hpMax = readInt(p, v2::GameOffsets().show_entity_hp_max);
+            if (hpMax > 0) {
+                float ratio = (float)hp / (float)hpMax;
+                if (ratio < 0) ratio = 0; if (ratio > 1) ratio = 1;
+                float barH = (footY - headY);
+                float fill = barH * ratio;
+                dl->AddRectFilled(ImVec2(sp.x - w/2 - 6, headY), ImVec2(sp.x - w/2 - 2, footY), IM_COL32(40,40,40,180));
+                dl->AddRectFilled(ImVec2(sp.x - w/2 - 6, footY - fill), ImVec2(sp.x - w/2 - 2, footY), IM_COL32(80,220,80,220));
+            }
+        }
+        if (s.esp.showName) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%s %d", isEnemy ? "ENEMY" : "TEAM", camp);
+            dl->AddText(ImVec2(sp.x - w/2, headY - 16), col, buf);
+        }
     }
 }
 

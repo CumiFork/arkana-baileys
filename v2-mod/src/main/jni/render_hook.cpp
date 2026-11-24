@@ -182,6 +182,7 @@ EGLBoolean hook_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
+    v2menu::DrawESP();
     v2menu::DrawMenu();
 
     ImGui::Render();
