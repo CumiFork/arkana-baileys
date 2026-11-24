@@ -11,6 +11,8 @@
 #include <string>
 
 #include "auto_retribution.h"
+#include "menu.h"
+#include "feature_state.h"
 
 #define LOG_TAG "MEOW_V2"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -40,6 +42,7 @@ void* init_thread(void*) {
     LOGI("init_thread started");
     AutoRetribution::WriteStatus("init", "started");
     loadConfig();
+    v2menu::StartRenderHook();
 
     const char* lib = "libil2cpp.so";
     uintptr_t base = 0;

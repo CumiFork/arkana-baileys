@@ -1,51 +1,100 @@
-# v2-mod (MLBB Auto Retribution scaffold)
+# v2-mod
 
-Separate from `v1/` read-only overlay. This folder is for hook/inject-based mod work.
+Modul terpisah dari `v1/` untuk eksperimen MLBB dengan hook/injeksi. `v1/` tetap 0% inject/read-only.
 
-## Status
+## Status saat ini
 
-- Dump-derived offsets are filled from `/storage/emulated/0/walib/dump.cs` (BattleManager.Update, ShowPlayer.m_iSummonSkillId, ShowEntity HP/flags, monster list).
-- Detection scan runs in `hooked_battle_update`: finds wild monster HP% <= threshold and logs target.
-- **Auto-cast invoke is still TODO.** `tryCastRetribution` does not call the game cast method yet; it needs a verified SkillComponent/LogicFighter cast path (dump reference: `SkillComponent.CastSpellToEnemy` RVA `0x29F0788`).
+- Menu ImGui in-game (render via `eglSwapBuffers` hook). Input sentuh dicoba lewat `UnityEngine.Input` runtime resolve; jika tidak aktif, ubah `menu_open` di config.
+- Auto Retribution: deteksi HP monster lewat hook `BattleManager.Update`. Filter target: Lord/Turtle/Blue Buff/Purple Buff/Red Buff berdasarkan ID monster yang dikonfigurasi.
+- Room info: baca camp/rank/room ID/player count/enemy count dari `ShowPlayer`/`BattleManager` (offset dump-derived, perlu verifikasi build target).
+- ESP / Aim: UI dan config tersedia, tetapi **belum aktif menggambar/aim** karena offset camera/world-to-screen/transform/aim-write belum diverifikasi.
+- Real auto-cast retribution: **belum diimplementasi** (`cast_enabled` safety gate).
 
-## Features
+## Build
 
-- **BattleManager.Update hook** via Dobby, installed after `libil2cpp.so` is found.
-- **Config file**: `/data/local/tmp/v2_autoretribution.cfg` (key=value, `#` comments). Reloaded periodically while in game.
-- **Status file**: `/data/local/tmp/v2_autoretribution.status` for quick Termux/debug inspection.
-- **Safety gates**: cooldown, HP threshold clamp, monster scan cap, optional required summon skill ID, optional wild-monster-only filter.
-- **Cast gate**: `cast_enabled` defaults to `0`; real cast invoke remains unimplemented until verified on target build.
+Butuh Android NDK (`ndk-build`). Build via GitHub Actions workflow `.github/workflows/build-v2-mod.yml`.
 
-## Config keys
-
-```ini
-# /data/local/tmp/v2_autoretribution.cfg
-enabled=1                  # 1/0
-hp_percent=20              # 1..100
-cooldown_ms=500            # >= 0
-only_wild_monsters=1       # 1/0
-debug_log=1                # 1/0
-cast_enabled=0             # 1/0, keep 0 until cast path is implemented/verified
-required_skill_id=0        # 0 = any summon skill
-max_monster_scan=64        # 1..256
-config_reload_sec=3        # 0 disables periodic reload
-```
-
-## Build (ndk-build)
+Lokal (jika NDK tersedia):
 
 ```bash
 cd v2-mod/src/main/jni
 ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk NDK_APPLICATION_MK=Application.mk
 ```
 
-## What must be filled
+Output: `v2-mod/src/main/jni/libs/arm64-v8a/libMEOW.so`
 
-1. Verify offsets against the target MLBB build/version.
-2. Implement `tryCastRetribution` with a verified in-game cast call.
-3. Test hook/detection/cast on a controlled account/build.
+## Inject
 
-## Safety/constraints
+```bash
+cd /data/data/com.termux/files/home/arkana-baileys
+bash v2-mod/loader.sh /path/to/libMEOW.so
+```
 
-- This is not `v1` read-only architecture.
-- Test only on accounts/builds you own/control.
-- `cast_enabled` is off by default because cast invoke is not implemented.
+Loader menulis config default, men-stage `.so` ke lib dir app MLBB (SELinux Enforcing), inject via `projek/inject`, lalu tail `logcat -s MEOW_V2`.
+
+## Config
+
+File: `/data/local/tmp/v2_autoretribution.cfg`
+
+```ini
+enabled=1
+hp_percent=20
+cooldown_ms=500
+only_wild_monsters=1
+debug_log=1
+cast_enabled=0
+required_skill_id=0
+max_monster_scan=64
+config_reload_sec=3
+
+# Auto Retribution target filter
+retri_lord=1
+retri_turtle=1
+retri_blue_buff=1
+retri_purple_buff=1
+retri_red_buff=1
+id_lord=0
+id_turtle=0
+id_blue_buff=0
+id_purple_buff=0
+id_red_buff=0
+
+# Aim (scaffold)
+aim_enabled=0
+aim_beatrix_only=0
+aim_basic_attack=1
+aim_fov=120
+aim_smooth=8
+aim_enemy_only=1
+
+# ESP (scaffold)
+esp_enabled=0
+esp_box=1
+esp_line=1
+esp_name=1
+esp_hp=1
+esp_distance=0
+esp_enemy_only=1
+esp_hide_teammates=1
+
+# Room info
+room_enabled=1
+room_show_rank=1
+room_show_team=1
+room_show_id=0
+
+menu_open=1
+```
+
+Untuk membedakan Lord/Turtle/Buff, isi `id_*` dengan monster ID dari log debug (`MEOW_V2`) saat target terdeteksi.
+
+## Status
+
+File: `/data/local/tmp/v2_autoretribution.status`. Berisi state hook, retri, camp/rank/room/player/enemy count, dan flag fitur.
+
+## Catatan penting
+
+- Ini modul injeksi/hook; gunakan hanya pada environment yang kamu miliki/kendalikan.
+- `cast_enabled` default `0`; path cast masih TODO.
+- ESP/aim butuh offset camera/world-to-screen/transform build target. Jangan anggap aktif hanya karena toggle ada.
+- Jika menu tidak bisa disentuh, set `menu_open=1/0` di config lalu tunggu reload.
