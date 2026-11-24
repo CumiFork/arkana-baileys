@@ -16,9 +16,11 @@ LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include/ImGui/font \
     $(LOCAL_PATH)/include/Hook/Dobby \
     $(LOCAL_PATH)/include/xdl \
+    $(LOCAL_PATH)/src/xdl \
     $(LOCAL_PATH)/Il2Cpp
 
 FILE_LIST := $(wildcard $(LOCAL_PATH)/*.cpp)
+FILE_LIST += $(wildcard $(LOCAL_PATH)/src/xdl/*.c)
 FILE_LIST += $(wildcard $(LOCAL_PATH)/src/ImGui/*.cpp)
 FILE_LIST += $(wildcard $(LOCAL_PATH)/src/ImGui/backends/*.cpp)
 FILE_LIST += $(wildcard $(LOCAL_PATH)/Il2Cpp/*.cpp)
