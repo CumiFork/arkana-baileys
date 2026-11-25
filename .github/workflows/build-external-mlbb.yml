@@ -1,0 +1,73 @@
+name: Build EXTERNAL-MLBB (Android arm64-v8a)
+
+on:
+  push:
+    paths:
+      - 'EXTERNAL-MLBB/**'
+      - '.github/workflows/build-external-mlbb.yml'
+  pull_request:
+    paths:
+      - 'EXTERNAL-MLBB/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: EXTERNAL-MLBB
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Android NDK r27d
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27d
+          add-to-path: true
+
+      - name: Build native binary (ndk-build)
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          echo "NDK_HOME=$NDK_HOME"
+          "$NDK_HOME/ndk-build" -C app/src/main/jni NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk NDK_APPLICATION_MK=Application.mk -j"$(nproc)"
+          ls -la app/src/main/libs/arm64-v8a || true
+          ls -la app/src/main/jni/libs/arm64-v8a || true
+
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          OUT="dist"
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
+          BIN=""
+          for c in \
+            app/src/main/jni/libs/arm64-v8a/Starcool.sh \
+            app/src/main/libs/arm64-v8a/Starcool.sh \
+            app/src/main/jni/obj/local/arm64-v8a/Starcool.sh; do
+            if [ -f "$c" ]; then BIN="$c"; break; fi
+          done
+          if [ -z "$BIN" ]; then
+            echo "Built binary not found" >&2
+            find app/src/main -type f -maxdepth 6 | sort >&2
+            exit 1
+          fi
+          cp "$BIN" "$OUT/Starcool.sh"
+          chmod 755 "$OUT/Starcool.sh"
+          cp run.sh "$OUT/run.sh"
+          chmod 755 "$OUT/run.sh"
+          find app/src/main -name '*.so' -o -name 'classes.dex' | while read -r f; do
+            mkdir -p "$OUT/extra/$(dirname "$f")"
+            cp "$f" "$OUT/extra/$f"
+          done
+          (cd "$OUT" && sha256sum Starcool.sh run.sh > SHA256SUMS.txt || true)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-mlbb-arm64-v8a
+          path: EXTERNAL-MLBB/dist/**
+          if-no-files-found: error
