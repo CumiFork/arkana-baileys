@@ -218,3 +218,14 @@ void WriteStatus() {
 }
 
 }  // namespace v2
+
+
+namespace v2 {
+std::atomic<bool>& ExitRequested() {
+    static std::atomic<bool> g_exit{false};
+    return g_exit;
+}
+void RequestExit() {
+    ExitRequested().store(true);
+}
+}  // namespace v2

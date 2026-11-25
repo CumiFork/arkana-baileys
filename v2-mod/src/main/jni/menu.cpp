@@ -4,6 +4,7 @@
 #include <GLES3/gl3.h>
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -33,6 +34,8 @@ void HelpMarker(const char* desc) {
 
 }  // namespace
 
+static float g_lastScale = 0.0f;
+
 void SetupImGui() {
     if (g_setup) return;
     IMGUI_CHECKVERSION();
@@ -49,13 +52,39 @@ void SetupImGui() {
     style.WindowPadding = ImVec2(10, 10);
     style.FramePadding = ImVec2(6, 4);
     style.ItemSpacing = ImVec2(8, 6);
-    style.ScaleAllSizes(1.5f);
     ImGui_ImplOpenGL3_Init("#version 300 es");
     g_setup = true;
     __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "ImGui setup done");
 }
 
+static void ApplyResponsiveScale(float w, float h) {
+    float shortSide = w < h ? w : h;
+    float scale = shortSide / 720.0f;
+    if (scale < 1.0f) scale = 1.0f;
+    if (scale > 2.8f) scale = 2.8f;
+    if (fabsf(scale - g_lastScale) < 0.05f) return;
+    ImGuiStyle& style = ImGui::GetStyle();
+    style = ImGuiStyle();
+    ImGui::StyleColorsDark();
+    style.WindowRounding = 6.0f;
+    style.FrameRounding = 4.0f;
+    style.GrabRounding = 4.0f;
+    style.WindowBorderSize = 1.0f;
+    style.FrameBorderSize = 1.0f;
+    style.WindowPadding = ImVec2(10, 10);
+    style.FramePadding = ImVec2(6, 4);
+    style.ItemSpacing = ImVec2(8, 6);
+    style.ScaleAllSizes(scale);
+    ImGuiIO& io = ImGui::GetIO();
+    io.FontGlobalScale = scale / 1.5f;
+    if (io.FontGlobalScale < 0.8f) io.FontGlobalScale = 0.8f;
+    if (io.FontGlobalScale > 1.8f) io.FontGlobalScale = 1.8f;
+    g_lastScale = scale;
+}
+
 void DrawOverlayInfo() {
+    ImGuiIO& io = ImGui::GetIO();
+    ApplyResponsiveScale(io.DisplaySize.x, io.DisplaySize.y);
     v2::FeatureState s;
     {
         std::lock_guard<std::mutex> lock(v2::StateMutex());
@@ -110,10 +139,18 @@ void DrawMenu() {
     }
 
     ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x * 0.62f, io.DisplaySize.y * 0.62f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.19f, io.DisplaySize.y * 0.18f), ImGuiCond_FirstUseEver);
+    ApplyResponsiveScale(io.DisplaySize.x, io.DisplaySize.y);
+    float shortSide = io.DisplaySize.x < io.DisplaySize.y ? io.DisplaySize.x : io.DisplaySize.y;
+    float winW = shortSide * 0.88f;
+    float maxW = io.DisplaySize.x * 0.94f;
+    if (winW > maxW) winW = maxW;
+    if (winW < 320.0f) winW = io.DisplaySize.x * 0.94f;
+    float maxH = io.DisplaySize.y * 0.88f;
+    ImGui::SetNextWindowSizeConstraints(ImVec2(winW, 0), ImVec2(winW, maxH));
+    ImGui::SetNextWindowSize(ImVec2(winW, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2((io.DisplaySize.x - winW) * 0.5f, io.DisplaySize.y * 0.06f), ImGuiCond_FirstUseEver);
 
-    if (!ImGui::Begin("v2-mod", &s.menu.open, ImGuiWindowFlags_NoCollapse)) {
+    if (!ImGui::Begin("v2-mod", &s.menu.open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         std::lock_guard<std::mutex> lock(v2::StateMutex());
         v2::State().menu.open = s.menu.open;
@@ -122,6 +159,8 @@ void DrawMenu() {
 
     if (ImGui::BeginTabBar("tabs")) {
         if (ImGui::BeginTabItem("Auto Retribution")) {
+            float itemW = ImGui::GetContentRegionAvail().x * 0.55f;
+            ImGui::PushItemWidth(itemW);
             ImGui::Checkbox("Enable Auto Retribution", &s.retri.enabled);
             ImGui::Checkbox("Real cast (safety gate, TODO)", &s.retri.castEnabled);
             HelpMarker("External mode: detection/read-only. Real cast requires in-process injection and is not available in this external overlay.");
@@ -130,27 +169,31 @@ void DrawMenu() {
             ImGui::SliderInt("Max monster scan", &s.retri.maxScan, 1, 256);
             ImGui::Checkbox("Only wild monsters", &s.retri.onlyWild);
             ImGui::InputInt("Required summon skill ID (0=any)", &s.retri.requiredSkillId);
+            ImGui::PopItemWidth();
 
             ImGui::Separator();
             ImGui::Text("Target filter");
             HelpMarker("If monster IDs are configured, only matching enabled categories are targeted. If all IDs are 0, legacy wild-monster detection is used.");
+            float idW = ImGui::GetContentRegionAvail().x * 0.28f;
+            if (idW < 80.0f) idW = 80.0f;
             ImGui::Checkbox("Lord", &s.retri.targetLord);
-            ImGui::SameLine(); ImGui::InputInt("ID##lord", &s.retri.idLord);
+            ImGui::SameLine(); ImGui::SetNextItemWidth(idW); ImGui::InputInt("ID##lord", &s.retri.idLord);
             ImGui::Checkbox("Turtle", &s.retri.targetTurtle);
-            ImGui::SameLine(); ImGui::InputInt("ID##turtle", &s.retri.idTurtle);
+            ImGui::SameLine(); ImGui::SetNextItemWidth(idW); ImGui::InputInt("ID##turtle", &s.retri.idTurtle);
             ImGui::Checkbox("Blue buff", &s.retri.targetBlueBuff);
-            ImGui::SameLine(); ImGui::InputInt("ID##blue", &s.retri.idBlueBuff);
+            ImGui::SameLine(); ImGui::SetNextItemWidth(idW); ImGui::InputInt("ID##blue", &s.retri.idBlueBuff);
             ImGui::Checkbox("Purple buff", &s.retri.targetPurpleBuff);
-            ImGui::SameLine(); ImGui::InputInt("ID##purple", &s.retri.idPurpleBuff);
+            ImGui::SameLine(); ImGui::SetNextItemWidth(idW); ImGui::InputInt("ID##purple", &s.retri.idPurpleBuff);
             ImGui::Checkbox("Red buff", &s.retri.targetRedBuff);
-            ImGui::SameLine(); ImGui::InputInt("ID##red", &s.retri.idRedBuff);
+            ImGui::SameLine(); ImGui::SetNextItemWidth(idW); ImGui::InputInt("ID##red", &s.retri.idRedBuff);
 
             ImGui::Separator();
-            ImGui::Text("Status: %s (%s)", info.retriState.c_str(), info.retriDetail.c_str());
+            ImGui::TextWrapped("Status: %s (%s)", info.retriState.c_str(), info.retriDetail.c_str());
             ImGui::EndTabItem();
         }
 
         if (ImGui::BeginTabItem("Aim")) {
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.55f);
             ImGui::Checkbox("Enable aim assist", &s.aim.enabled);
             HelpMarker("External mode: target detection only. Aim/write requires in-process input injection; not performed by external overlay.");
             ImGui::Checkbox("Beatrix only", &s.aim.beatrixOnly);
@@ -158,11 +201,13 @@ void DrawMenu() {
             ImGui::Checkbox("Enemy only", &s.aim.targetEnemyOnly);
             ImGui::SliderFloat("FOV", &s.aim.fov, 10.0f, 500.0f, "%.0f");
             ImGui::SliderFloat("Smooth", &s.aim.smooth, 1.0f, 30.0f, "%.1f");
-            ImGui::TextDisabled("Offsets needed: camera, world-to-screen, transform, aim/write target.");
+            ImGui::PopItemWidth();
+            ImGui::TextWrapped("%s", "Offsets needed: camera, world-to-screen, transform, aim/write target.");
             ImGui::EndTabItem();
         }
 
         if (ImGui::BeginTabItem("ESP")) {
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.55f);
             ImGui::Checkbox("Enable ESP", &s.esp.enabled);
             HelpMarker("External ESP reads /proc/<pid>/mem as root. Requires View-Projection Matrix and entity offsets configured for current build.");
             ImGui::Checkbox("Box", &s.esp.showBox);
@@ -172,7 +217,8 @@ void DrawMenu() {
             ImGui::Checkbox("Distance", &s.esp.showDistance);
             ImGui::Checkbox("Enemy only", &s.esp.enemyOnly);
             ImGui::Checkbox("Hide teammates", &s.esp.hideTeammates);
-            ImGui::TextDisabled("Offsets needed: camera/main, world-to-screen, transform position.");
+            ImGui::PopItemWidth();
+            ImGui::TextWrapped("%s", "Offsets needed: camera/main, world-to-screen, transform position.");
             ImGui::EndTabItem();
         }
 
@@ -191,20 +237,22 @@ void DrawMenu() {
         }
 
         if (ImGui::BeginTabItem("Settings")) {
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.55f);
             ImGui::Checkbox("Debug log", &s.debugLog);
             ImGui::SliderInt("Config reload sec", &s.configReloadSec, 0, 30);
-            ImGui::Text("Mode: External (read-only /proc/pid/mem)");
-            ImGui::Text("Hook: %s", info.hookState.c_str());
-            ImGui::Text("Detail: %s", info.hookDetail.c_str());
+            ImGui::PopItemWidth();
+            ImGui::TextWrapped("Mode: External (read-only /proc/pid/mem)");
+            ImGui::TextWrapped("Hook: %s", info.hookState.c_str());
+            ImGui::TextWrapped("Detail: %s", info.hookDetail.c_str());
             ext::FrameData f = ext::Snapshot();
             ImGui::Separator();
             ImGui::Text("View-Projection Matrix: %s", f.hasMatrix ? "RESOLVED" : "NOT RESOLVED");
             if (f.hasMatrix) {
-                ImGui::TextDisabled("VP[0..3]: %.3f %.3f %.3f %.3f", f.vp[0], f.vp[1], f.vp[2], f.vp[3]);
-                ImGui::TextDisabled("VP[4..7]: %.3f %.3f %.3f %.3f", f.vp[4], f.vp[5], f.vp[6], f.vp[7]);
+                ImGui::TextWrapped("VP[0..3]: %.3f %.3f %.3f %.3f", f.vp[0], f.vp[1], f.vp[2], f.vp[3]);
+                ImGui::TextWrapped("VP[4..7]: %.3f %.3f %.3f %.3f", f.vp[4], f.vp[5], f.vp[6], f.vp[7]);
             }
-            ImGui::TextDisabled("Camera ptr: 0x%llx", (unsigned long long)f.camera);
-            ImGui::TextDisabled("Set camera_ptr_rva/camera_view_off/camera_proj_off in config if needed.");
+            ImGui::TextWrapped("Camera ptr: 0x%llx", (unsigned long long)f.camera);
+            ImGui::TextWrapped("%s", "Set camera_ptr_rva/camera_view_off/camera_proj_off in config if needed.");
             ImGui::Separator();
             if (ImGui::Button("Save config")) {
                 std::lock_guard<std::mutex> lock(v2::StateMutex());
@@ -218,8 +266,12 @@ void DrawMenu() {
                 std::lock_guard<std::mutex> lock(v2::StateMutex());
                 s = v2::State();
             }
-            ImGui::TextDisabled("Config: /data/local/tmp/v2_autoretribution.cfg");
-            ImGui::TextDisabled("Status: /data/local/tmp/v2_autoretribution.status");
+            ImGui::SameLine();
+            if (ImGui::Button("Exit overlay")) {
+                v2::RequestExit();
+            }
+            ImGui::TextWrapped("%s", "Config: /data/local/tmp/v2_autoretribution.cfg");
+            ImGui::TextWrapped("%s", "Status: /data/local/tmp/v2_autoretribution.status");
             ImGui::EndTabItem();
         }
 

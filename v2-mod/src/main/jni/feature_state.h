@@ -136,4 +136,7 @@ void LoadConfig(const char* path = "/data/local/tmp/v2_autoretribution.cfg");
 void SaveConfig(const char* path = "/data/local/tmp/v2_autoretribution.cfg");
 void WriteStatus();
 
+std::atomic<bool>& ExitRequested();
+void RequestExit();
+
 }  // namespace v2

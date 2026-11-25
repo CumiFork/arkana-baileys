@@ -51,91 +51,101 @@ jobs:
           echo "NDK_DIR=$NDK_DIR" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
 
-      - name: Build arm64-v8a .so (ndk-build)
+      - name: Build arm64-v8a (ndk-build)
         id: build
         run: |
           set -euo pipefail
           export PATH="$NDK_DIR:$PATH"
-          SO_PATH=""
           if [ -f "v2-mod/src/main/jni/Android.mk" ]; then
             echo "Building with ndk-build (v2-mod)"
             pushd v2-mod/src/main/jni >/dev/null
             ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=Android.mk NDK_APPLICATION_MK=Application.mk APP_ABI=arm64-v8a APP_PLATFORM=android-24 -j"$(nproc)"
             popd >/dev/null
-            SO_PATH=$(find v2-mod/src/main/jni/libs/arm64-v8a -name '*.so' | head -n1)
           else
             echo "No Android.mk found" >&2
             exit 1
           fi
-          if [ -z "$SO_PATH" ] || [ ! -f "$SO_PATH" ]; then
-            echo "Built .so not found" >&2
+          BIN_PATH=$(find v2-mod/src/main/jni/libs/arm64-v8a -type f -name 'v2mod' | head -n1)
+          SO_PATH=$(find v2-mod/src/main/jni/libs/arm64-v8a -type f -name '*.so' | head -n1)
+          if [ -z "$BIN_PATH" ] || [ ! -f "$BIN_PATH" ]; then
+            echo "Built v2mod binary not found" >&2
+            find v2-mod/src/main/jni/libs -maxdepth 3 -type f -print || true
             exit 1
           fi
-          echo "so_path=$SO_PATH" >> "$GITHUB_OUTPUT"
-          echo "Built: $SO_PATH"
-          file "$SO_PATH"
+          echo "bin_path=$BIN_PATH" >> "$GITHUB_OUTPUT"
+          echo "so_path=${SO_PATH:-}" >> "$GITHUB_OUTPUT"
+          echo "Built binary: $BIN_PATH"
+          file "$BIN_PATH"
+          if [ -n "$SO_PATH" ] && [ -f "$SO_PATH" ]; then file "$SO_PATH"; fi
 
-      - name: Build APK (external overlay)
-        working-directory: v2-mod
+      - name: Package self-extracting v2mod.sh
         run: |
           set -euo pipefail
-          export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$NDK_DIR}"
-          gradle assembleDebug --stacktrace
-
-      - name: Package self-extracting run_imgui.sh
-        run: |
-          set -euo pipefail
-          SO_PATH="${{ steps.build.outputs.so_path }}"
-          B64=$(base64 -w0 "$SO_PATH")
-          cat > run_imgui.sh <<'SCRIPT'
+          BIN_PATH="${{ steps.build.outputs.bin_path }}"
+          B64=$(base64 -w0 "$BIN_PATH")
+          cat > v2mod.sh <<'SCRIPT'
           #!/system/bin/sh
-          # Self-extracting v2-mod external .so payload
-          set -e
-          OUT="/data/local/tmp/libimgui.so"
-          TMP="/data/local/tmp/.libimgui.b64.$$"
-          extract() {
-            cat > "$TMP" <<'__PAYLOAD__'
+          # Self-extracting v2-mod standalone native overlay
+          # Extracts to /data/local/tmp, runs as root, cleans up on exit.
+          set -eu
+
+          PAYLOAD_BIN="v2mod.bin"
+          OUT_DIR="/data/local/tmp"
+          OUT_BIN="$OUT_DIR/$PAYLOAD_BIN"
+          TMP_B64="$OUT_DIR/.v2mod.b64.$$"
+
+          cleanup() {
+            rm -f "$TMP_B64" "$OUT_BIN" 2>/dev/null || true
+          }
+          trap cleanup EXIT INT TERM
+
+          extract_payload() {
+            cat > "$TMP_B64" <<'__PAYLOAD__'
           SCRIPT
-          printf '%s\n' "$B64" >> run_imgui.sh
-          cat >> run_imgui.sh <<'SCRIPT'
+          printf '%s\n' "$B64" >> v2mod.sh
+          cat >> v2mod.sh <<'SCRIPT'
           __PAYLOAD__
-            base64 -d "$TMP" > "$OUT" 2>/dev/null || busybox base64 -d "$TMP" > "$OUT"
-            rm -f "$TMP"
-            chmod 755 "$OUT"
-          }
-          run_as_root() {
-            if command -v su >/dev/null 2>&1; then su -c "$1"; else sh -c "$1"; fi
-          }
-          echo "[*] Extracting payload to $OUT"
-          extract
-          if command -v su >/dev/null 2>&1; then
-            PKG="com.mobile.legends"
-            PID=$(run_as_root "pidof $PKG 2>/dev/null | awk '{print \$1}'" | tr -d '\r' || true)
-            if [ -n "$PID" ]; then
-              LIBDIR=$(run_as_root "ls -d /data/app/*/${PKG}*/lib/arm64 2>/dev/null | head -1" | tr -d '\r' || true)
-              if [ -n "$LIBDIR" ]; then
-                DST="$LIBDIR/libimgui.so"
-                run_as_root "cp '$OUT' '$DST' && chmod 755 '$DST' && (chcon u:object_r:apk_data_file:s0 '$DST' 2>/dev/null || true)"
-                echo "[+] Staged: $DST"
-                echo "[*] External overlay APK recommended. For legacy inject: su -c 'inject $PID $DST'"
-                exit 0
-              fi
+            if command -v base64 >/dev/null 2>&1; then
+              base64 -d "$TMP_B64" > "$OUT_BIN"
+            elif command -v busybox >/dev/null 2>&1; then
+              busybox base64 -d "$TMP_B64" > "$OUT_BIN"
+            else
+              echo "[!] base64 decoder not found" >&2
+              exit 1
             fi
-            echo "[+] Extracted: $OUT"
-          else
-            echo "[!] Root/su not detected; manual install required."
+            rm -f "$TMP_B64"
+            chmod 755 "$OUT_BIN"
+          }
+
+          if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
+            if command -v su >/dev/null 2>&1; then
+              echo "[*] Root required, re-exec via su"
+              exec su -c "sh '$0' "$@""
+            fi
+            echo "[!] Root not available. Run: su -c 'sh $0'" >&2
+            exit 1
           fi
+
+          export PATH="/system/bin:/system/xbin:/vendor/bin:/sbin:$PATH"
+          echo "[*] Extracting v2mod standalone to $OUT_BIN"
+          extract_payload
+          echo "[*] Starting v2mod overlay (Ctrl+C to exit)"
+          "$OUT_BIN" "$@"
+          STATUS=$?
+          echo "[*] v2mod exited with status $STATUS"
+          exit $STATUS
           SCRIPT
-          chmod +x run_imgui.sh
-          ls -lh run_imgui.sh
+          chmod +x v2mod.sh
+          ls -lh v2mod.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: v2-mod-external
+          name: v2-mod-standalone
           path: |
-            run_imgui.sh
-            v2-mod/build/outputs/apk/debug/*.apk
+            v2mod.sh
+            v2-mod/src/main/jni/libs/arm64-v8a/v2mod
+            v2-mod/src/main/jni/libs/arm64-v8a/*.so
 
       - name: Publish GitHub Release (latest)
         uses: softprops/action-gh-release@v2
@@ -144,7 +154,6 @@ jobs:
           name: latest
           make_latest: true
           files: |
-            run_imgui.sh
-            v2-mod/build/outputs/apk/debug/*.apk
+            v2mod.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
