@@ -131,7 +131,7 @@ public class V2Overlay {
             SurfaceControl.Transaction tx = new SurfaceControl.Transaction();
             tx.setLayer(sc, Integer.MAX_VALUE - 1);
             tx.setAlpha(sc, 1.0f);
-            tx.show(sc);
+            tx.setVisibility(sc, true);
             tx.apply();
             System.err.println("[v2mod] SurfaceControl layer applied");
 
@@ -166,7 +166,7 @@ public class V2Overlay {
         if (sc != null) {
             try {
                 SurfaceControl.Transaction tx = new SurfaceControl.Transaction();
-                tx.remove(sc);
+                tx.reparent(sc, null);
                 tx.apply();
             } catch (Throwable ignored) {}
             try { sc.release(); } catch (Throwable ignored) {}
