@@ -26,7 +26,7 @@ OPENGL_DRAW = 1
 LOCAL_MODULE := Starcool.sh
 
 LOCAL_CFLAGS := -std=c++20 -fvisibility=hidden -Wall -Wno-unused-variable -Wno-unused-function -Wno-format-security
-LOCAL_CPPFLAGS := -std=c++20 -fvisibility=hidden -Wall -Wno-unused-variable -Wno-unused-function -Wno-format-security -fno-exceptions -fno-rtti
+LOCAL_CPPFLAGS := -std=c++20 -fvisibility=hidden -Wall -Wno-unused-variable -Wno-unused-function -Wno-format-security -fexceptions -fno-rtti
 
 LOCAL_CFLAGS += -DVK_USE_PLATFORM_ANDROID_KHR
 LOCAL_CPPFLAGS += -DVK_USE_PLATFORM_ANDROID_KHR
