@@ -1,20 +1,21 @@
 #include <android/log.h>
 #include <android/native_window.h>
-#include <android/looper.h>
+#include <android/native_window_jni.h>
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #include <dirent.h>
-#include <dlfcn.h>
 #include <fcntl.h>
+#include <jni.h>
 #include <linux/input.h>
 #include <poll.h>
-#include <pthread.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/system_properties.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -22,14 +23,13 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <algorithm>
+#include <chrono>
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "menu.h"
 #include "feature_state.h"
 #include "external_engine.h"
-#include "native_surface.h"
 
 #define LOG_TAG "MEOW_V2NATIVE"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -41,7 +41,7 @@ namespace {
 std::atomic<bool> g_running{true};
 std::atomic<int> g_screenW{0};
 std::atomic<int> g_screenH{0};
-std::atomic<int> g_rot{0}; // 0,1,2,3
+std::atomic<int> g_rot{0};
 std::mutex g_inputMu;
 ImVec2 g_touchPos{0, 0};
 bool g_touchDown = false;
@@ -53,76 +53,117 @@ void onSignal(int) {
 
 int getPropInt(const char* key, int def) {
     char v[PROP_VALUE_MAX] = {0};
-    if (__system_property_get(key, v) > 0) return atoi(v);
+    int len = __system_property_get(key, v);
+    if (len > 0) return atoi(v);
     return def;
 }
 
 void updateRotationAndSize() {
-    // Read rotation from system property; fallback to display size
     int rot = getPropInt("service.sf.primary_display_orientation", -1);
     if (rot < 0) rot = getPropInt("ro.surface_flinger.primary_display_orientation", -1);
-    // common: ORIENTATION_0/90/180/270 mapped differently; keep as 0-3 if small
     if (rot >= 0 && rot <= 3) g_rot.store(rot);
-    // screen size will be set by EGL/native window query
 }
 
 struct TouchSlot {
     int trackingId = -1;
-    float x = 0;
-    float y = 0;
+    float x = 0.0f;
+    float y = 0.0f;
 };
 
 struct InputDevice {
     int fd = -1;
-    int minX = 0, maxX = 0, minY = 0, maxY = 0;
+    int minX = 0;
+    int maxX = 0;
+    int minY = 0;
+    int maxY = 0;
     int slot = 0;
     TouchSlot slots[10];
 };
 
 std::vector<InputDevice> g_devs;
+std::mutex g_devsMu;
+
+void closeInputDevicesLocked() {
+    for (auto& d : g_devs) {
+        if (d.fd >= 0) {
+            close(d.fd);
+            d.fd = -1;
+        }
+    }
+    g_devs.clear();
+}
 
 bool openInputDevices() {
-    g_devs.clear();
+    std::lock_guard<std::mutex> lk(g_devsMu);
+    closeInputDevicesLocked();
     DIR* dir = opendir("/dev/input");
-    if (!dir) { LOGE("open /dev/input failed: %s", strerror(errno)); return false; }
+    if (!dir) {
+        LOGE("open /dev/input failed: %s", strerror(errno));
+        return false;
+    }
     struct dirent* de;
     while ((de = readdir(dir)) != nullptr) {
         if (strncmp(de->d_name, "event", 5) != 0) continue;
-        std::string path = std::string("/dev/input/") + de->d_name;
-        int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
+        char path[64] = {0};
+        snprintf(path, sizeof(path), "/dev/input/%s", de->d_name);
+        int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0) continue;
-        // check for ABS_MT_POSITION_X/Y or ABS_X/Y
-        unsigned long absBits[(ABS_MAX + 7) / 8 + 1] = {0};
-        ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(absBits)), absBits);
-        auto hasBit = [&](int bit) { return (absBits[bit / 8] & (1u << (bit % 8))) != 0; };
+
+        unsigned long absBits[(ABS_MAX / 8) + 1] = {0};
+        if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(absBits)), absBits) < 0) {
+            close(fd);
+            continue;
+        }
+        auto hasBit = [&](int bit) -> bool {
+            if (bit < 0 || bit > ABS_MAX) return false;
+            return (absBits[bit / 8] & (1u << (bit % 8))) != 0;
+        };
         bool hasTouch = hasBit(ABS_MT_POSITION_X) && hasBit(ABS_MT_POSITION_Y);
         bool hasAbs = hasBit(ABS_X) && hasBit(ABS_Y);
-        if (!hasTouch && !hasAbs) { close(fd); continue; }
+        if (!hasTouch && !hasAbs) {
+            close(fd);
+            continue;
+        }
+
         InputDevice dev;
         dev.fd = fd;
-        struct input_absinfo ax{}, ay{};
+        struct input_absinfo ax{};
+        struct input_absinfo ay{};
         int xCode = hasTouch ? ABS_MT_POSITION_X : ABS_X;
         int yCode = hasTouch ? ABS_MT_POSITION_Y : ABS_Y;
-        if (ioctl(fd, EVIOCGABS(xCode), &ax) == 0) { dev.minX = ax.minimum; dev.maxX = ax.maximum; }
-        if (ioctl(fd, EVIOCGABS(yCode), &ay) == 0) { dev.minY = ay.minimum; dev.maxY = ay.maximum; }
-        for (auto& s : dev.slots) s.trackingId = -1;
+        if (ioctl(fd, EVIOCGABS(xCode), &ax) == 0) {
+            dev.minX = ax.minimum;
+            dev.maxX = ax.maximum;
+        }
+        if (ioctl(fd, EVIOCGABS(yCode), &ay) == 0) {
+            dev.minY = ay.minimum;
+            dev.maxY = ay.maximum;
+        }
+        for (auto& s : dev.slots) {
+            s.trackingId = -1;
+            s.x = 0.0f;
+            s.y = 0.0f;
+        }
         g_devs.push_back(dev);
-        LOGI("input device: %s x[%d,%d] y[%d,%d] mt=%d", path.c_str(), dev.minX, dev.maxX, dev.minY, dev.maxY, hasTouch);
+        LOGI("input device: %s x[%d,%d] y[%d,%d] mt=%d", path, dev.minX, dev.maxX, dev.minY, dev.maxY, hasTouch ? 1 : 0);
     }
     closedir(dir);
     return !g_devs.empty();
 }
 
 void mapToScreen(const InputDevice& dev, float rx, float ry, float& sx, float& sy) {
-    float w = (float)g_screenW.load();
-    float h = (float)g_screenH.load();
-    if (w <= 0 || h <= 0) { sx = rx; sy = ry; return; }
-    float nx = (dev.maxX > dev.minX) ? (rx - dev.minX) / (float)(dev.maxX - dev.minX) : 0.0f;
-    float ny = (dev.maxY > dev.minY) ? (ry - dev.minY) / (float)(dev.maxY - dev.minY) : 0.0f;
-    if (nx < 0) nx = 0; if (nx > 1) nx = 1;
-    if (ny < 0) ny = 0; if (ny > 1) ny = 1;
+    float w = static_cast<float>(g_screenW.load());
+    float h = static_cast<float>(g_screenH.load());
+    if (w <= 0.0f || h <= 0.0f) {
+        sx = rx;
+        sy = ry;
+        return;
+    }
+    float nx = (dev.maxX > dev.minX) ? (rx - static_cast<float>(dev.minX)) / static_cast<float>(dev.maxX - dev.minX) : 0.0f;
+    float ny = (dev.maxY > dev.minY) ? (ry - static_cast<float>(dev.minY)) / static_cast<float>(dev.maxY - dev.minY) : 0.0f;
+    nx = std::clamp(nx, 0.0f, 1.0f);
+    ny = std::clamp(ny, 0.0f, 1.0f);
     int rot = g_rot.load();
-    // Map normalized touch to current screen orientation
     switch (rot) {
         case 1: sx = ny * w; sy = (1.0f - nx) * h; break;
         case 2: sx = (1.0f - nx) * w; sy = (1.0f - ny) * h; break;
@@ -133,135 +174,255 @@ void mapToScreen(const InputDevice& dev, float rx, float ry, float& sx, float& s
 
 void inputThread() {
     if (!openInputDevices()) {
-        LOGW("no touch input devices found");
+        LOGW("no touch input devices found at startup");
     }
     std::vector<pollfd> pfds;
+    std::vector<int> fdIndex;
     while (g_running.load() && !v2::ExitRequested().load()) {
         pfds.clear();
-        for (auto& d : g_devs) { pollfd p{}; p.fd = d.fd; p.events = POLLIN; pfds.push_back(p); }
-        if (pfds.empty()) { std::this_thread::sleep_for(std::chrono::milliseconds(500)); openInputDevices(); continue; }
-        int r = poll(pfds.data(), pfds.size(), 100);
-        if (r <= 0) continue;
-        for (size_t i = 0; i < pfds.size() && i < g_devs.size(); ++i) {
-            if (!(pfds[i].revents & POLLIN)) continue;
-            InputDevice& dev = g_devs[i];
-            struct input_event ev;
-            while (read(dev.fd, &ev, sizeof(ev)) == (ssize_t)sizeof(ev)) {
+        fdIndex.clear();
+        {
+            std::lock_guard<std::mutex> lk(g_devsMu);
+            for (size_t i = 0; i < g_devs.size(); ++i) {
+                if (g_devs[i].fd < 0) continue;
+                pollfd p{};
+                p.fd = g_devs[i].fd;
+                p.events = POLLIN;
+                p.revents = 0;
+                pfds.push_back(p);
+                fdIndex.push_back(static_cast<int>(i));
+            }
+        }
+        if (pfds.empty()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            if (g_running.load() && !v2::ExitRequested().load()) openInputDevices();
+            continue;
+        }
+
+        int r = poll(pfds.data(), static_cast<nfds_t>(pfds.size()), 100);
+        if (r < 0) {
+            if (errno == EINTR) continue;
+            LOGW("poll failed: %s", strerror(errno));
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+        if (r == 0) continue;
+
+        for (size_t i = 0; i < pfds.size(); ++i) {
+            if (!(pfds[i].revents & (POLLIN | POLLERR | POLLHUP | POLLNVAL))) continue;
+            if (pfds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) continue;
+            int devIdx = fdIndex[i];
+            InputDevice* devPtr = nullptr;
+            {
+                std::lock_guard<std::mutex> lk(g_devsMu);
+                if (devIdx < 0 || devIdx >= static_cast<int>(g_devs.size())) continue;
+                devPtr = &g_devs[static_cast<size_t>(devIdx)];
+                if (devPtr->fd != pfds[i].fd || devPtr->fd < 0) continue;
+            }
+
+            struct input_event evs[64];
+            ssize_t n = read(pfds[i].fd, evs, sizeof(evs));
+            if (n < 0) {
+                if (errno == EAGAIN || errno == EINTR) continue;
+                continue;
+            }
+            int count = static_cast<int>(n / static_cast<ssize_t>(sizeof(struct input_event)));
+            if (count <= 0) continue;
+
+            std::lock_guard<std::mutex> lk(g_devsMu);
+            if (devIdx < 0 || devIdx >= static_cast<int>(g_devs.size())) continue;
+            InputDevice& dev = g_devs[static_cast<size_t>(devIdx)];
+            if (dev.fd != pfds[i].fd || dev.fd < 0) continue;
+
+            for (int e = 0; e < count; ++e) {
+                const struct input_event& ev = evs[e];
                 if (ev.type == EV_ABS) {
-                    if (ev.code == ABS_MT_SLOT) dev.slot = std::max(0, std::min(9, ev.value));
-                    else if (ev.code == ABS_MT_TRACKING_ID) dev.slots[dev.slot].trackingId = ev.value;
-                    else if (ev.code == ABS_MT_POSITION_X || ev.code == ABS_X) dev.slots[dev.slot].x = (float)ev.value;
-                    else if (ev.code == ABS_MT_POSITION_Y || ev.code == ABS_Y) dev.slots[dev.slot].y = (float)ev.value;
-                } else if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
-                    // pick first active slot
-                    bool down = false; float sx=0, sy=0;
-                    for (auto& s : dev.slots) {
-                        if (s.trackingId >= 0) { mapToScreen(dev, s.x, s.y, sx, sy); down = true; break; }
+                    if (ev.code == ABS_MT_SLOT) {
+                        dev.slot = std::clamp(ev.value, 0, 9);
+                    } else if (ev.code == ABS_MT_TRACKING_ID) {
+                        dev.slots[dev.slot].trackingId = ev.value;
+                    } else if (ev.code == ABS_MT_POSITION_X || ev.code == ABS_X) {
+                        dev.slots[dev.slot].x = static_cast<float>(ev.value);
+                    } else if (ev.code == ABS_MT_POSITION_Y || ev.code == ABS_Y) {
+                        dev.slots[dev.slot].y = static_cast<float>(ev.value);
                     }
-                    std::lock_guard<std::mutex> lk(g_inputMu);
+                } else if (ev.type == EV_KEY && (ev.code == BTN_TOUCH || ev.code == BTN_TOOL_FINGER)) {
+                    if (ev.value == 0) {
+                        dev.slots[0].trackingId = -1;
+                    } else if (dev.slots[0].trackingId < 0) {
+                        dev.slots[0].trackingId = 0;
+                    }
+                } else if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
+                    bool down = false;
+                    float sx = 0.0f, sy = 0.0f;
+                    for (auto& s : dev.slots) {
+                        if (s.trackingId >= 0) {
+                            mapToScreen(dev, s.x, s.y, sx, sy);
+                            down = true;
+                            break;
+                        }
+                    }
+                    std::lock_guard<std::mutex> ilk(g_inputMu);
                     g_touchDown = down;
-                    if (down) { g_touchPos = ImVec2(sx, sy); }
+                    if (down) g_touchPos = ImVec2(sx, sy);
                 }
             }
         }
     }
+
+    std::lock_guard<std::mutex> lk(g_devsMu);
+    closeInputDevicesLocked();
+    std::lock_guard<std::mutex> ilk(g_inputMu);
+    g_touchDown = false;
 }
 
-// ---------- Native overlay ----------
-
-struct OverlaySurface {
-    NativeOverlay overlay{};
-    EGLDisplay eglDisplay = EGL_NO_DISPLAY;
-    EGLSurface eglSurface = EGL_NO_SURFACE;
-    EGLContext eglContext = EGL_NO_CONTEXT;
-    int w = 0, h = 0;
-};
-
-int getDisplaySize(int& w, int& h) {
-    w = getPropInt("debug.force.display.width", 0);
-    h = getPropInt("debug.force.display.height", 0);
-    if (w > 0 && h > 0) return 0;
-    FILE* fp = popen("wm size 2>/dev/null | tr -cd '0-9x\\n' | tail -n1", "r");
-    if (fp) {
-        char buf[64] = {0};
-        if (fgets(buf, sizeof(buf), fp)) {
-            int rw=0,rh=0;
-            if (sscanf(buf, "%dx%d", &rw, &rh) == 2 && rw>0 && rh>0) { w=rw; h=rh; }
-        }
-        pclose(fp);
-    }
-    if (w <= 0 || h <= 0) { w = 1080; h = 2400; }
-    return 0;
-}
-
-bool createOverlayEGL(OverlaySurface& out) {
-    getDisplaySize(out.w, out.h);
-    g_screenW.store(out.w); g_screenH.store(out.h);
-    LOGI("overlay target size %dx%d", out.w, out.h);
-
-    if (!NativeOverlay_Create(&out.overlay, out.w, out.h) || !out.overlay.window) {
-        LOGE("NativeOverlay_Create failed");
+bool checkEgl(const char* what) {
+    EGLint err = eglGetError();
+    if (err != EGL_SUCCESS) {
+        LOGE("%s failed: eglGetError=0x%x", what, static_cast<unsigned>(err));
         return false;
     }
     return true;
 }
 
-bool initEGLWindow(OverlaySurface& out) {
-    out.eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (out.eglDisplay == EGL_NO_DISPLAY) { LOGE("eglGetDisplay failed"); return false; }
-    if (!eglInitialize(out.eglDisplay, nullptr, nullptr)) { LOGE("eglInitialize failed"); return false; }
+bool initEGL(ANativeWindow* window, int width, int height,
+             EGLDisplay& outDisplay, EGLSurface& outSurface, EGLContext& outContext) {
+    outDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (outDisplay == EGL_NO_DISPLAY) {
+        LOGE("eglGetDisplay failed: 0x%x", static_cast<unsigned>(eglGetError()));
+        return false;
+    }
+
+    EGLint major = 0, minor = 0;
+    if (eglInitialize(outDisplay, &major, &minor) != EGL_TRUE) {
+        LOGE("eglInitialize failed: 0x%x", static_cast<unsigned>(eglGetError()));
+        outDisplay = EGL_NO_DISPLAY;
+        return false;
+    }
+    LOGI("EGL initialized %d.%d", major, minor);
+
     const EGLint cfgAttrs[] = {
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-        EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_RED_SIZE, 8, EGL_ALPHA_SIZE, 8,
-        EGL_DEPTH_SIZE, 16, EGL_STENCIL_SIZE, 8,
+        EGL_BLUE_SIZE, 8,
+        EGL_GREEN_SIZE, 8,
+        EGL_RED_SIZE, 8,
+        EGL_ALPHA_SIZE, 8,
+        EGL_DEPTH_SIZE, 16,
+        EGL_STENCIL_SIZE, 8,
         EGL_NONE
     };
-    EGLConfig cfg; EGLint n=0;
-    if (!eglChooseConfig(out.eglDisplay, cfgAttrs, &cfg, 1, &n) || n <= 0) { LOGE("eglChooseConfig failed"); return false; }
+    EGLConfig cfg = nullptr;
+    EGLint cfgCount = 0;
+    if (eglChooseConfig(outDisplay, cfgAttrs, &cfg, 1, &cfgCount) != EGL_TRUE || cfgCount <= 0 || cfg == nullptr) {
+        LOGE("eglChooseConfig failed: count=%d err=0x%x", cfgCount, static_cast<unsigned>(eglGetError()));
+        eglTerminate(outDisplay);
+        outDisplay = EGL_NO_DISPLAY;
+        return false;
+    }
 
     EGLint fmt = 0;
-    eglGetConfigAttrib(out.eglDisplay, cfg, EGL_NATIVE_VISUAL_ID, &fmt);
-    ANativeWindow_setBuffersGeometry(out.overlay.window, out.w, out.h, fmt);
+    if (eglGetConfigAttrib(outDisplay, cfg, EGL_NATIVE_VISUAL_ID, &fmt) != EGL_TRUE) {
+        LOGE("eglGetConfigAttrib(EGL_NATIVE_VISUAL_ID) failed: 0x%x", static_cast<unsigned>(eglGetError()));
+        eglTerminate(outDisplay);
+        outDisplay = EGL_NO_DISPLAY;
+        return false;
+    }
 
-    out.eglSurface = eglCreateWindowSurface(out.eglDisplay, cfg, out.overlay.window, nullptr);
-    if (out.eglSurface == EGL_NO_SURFACE) { LOGE("eglCreateWindowSurface failed: 0x%x", eglGetError()); return false; }
-    const EGLint ctxAttrs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
-    out.eglContext = eglCreateContext(out.eglDisplay, cfg, EGL_NO_CONTEXT, ctxAttrs);
-    if (out.eglContext == EGL_NO_CONTEXT) { LOGE("eglCreateContext failed: 0x%x", eglGetError()); return false; }
-    if (!eglMakeCurrent(out.eglDisplay, out.eglSurface, out.eglSurface, out.eglContext)) { LOGE("eglMakeCurrent failed"); return false; }
-    eglSwapInterval(out.eglDisplay, 1);
-    eglQuerySurface(out.eglDisplay, out.eglSurface, EGL_WIDTH, &out.w);
-    eglQuerySurface(out.eglDisplay, out.eglSurface, EGL_HEIGHT, &out.h);
-    if (out.w > 0 && out.h > 0) { g_screenW.store(out.w); g_screenH.store(out.h); }
-    LOGI("EGL ready %dx%d", out.w, out.h);
+    ANativeWindow_setBuffersGeometry(window, width, height, fmt);
+
+    outSurface = eglCreateWindowSurface(outDisplay, cfg, window, nullptr);
+    if (outSurface == EGL_NO_SURFACE) {
+        LOGE("eglCreateWindowSurface failed: 0x%x", static_cast<unsigned>(eglGetError()));
+        eglTerminate(outDisplay);
+        outDisplay = EGL_NO_DISPLAY;
+        return false;
+    }
+
+    const EGLint ctxAttrs[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
+    outContext = eglCreateContext(outDisplay, cfg, EGL_NO_CONTEXT, ctxAttrs);
+    if (outContext == EGL_NO_CONTEXT) {
+        LOGE("eglCreateContext failed: 0x%x", static_cast<unsigned>(eglGetError()));
+        eglDestroySurface(outDisplay, outSurface);
+        outSurface = EGL_NO_SURFACE;
+        eglTerminate(outDisplay);
+        outDisplay = EGL_NO_DISPLAY;
+        return false;
+    }
+
+    if (eglMakeCurrent(outDisplay, outSurface, outSurface, outContext) != EGL_TRUE) {
+        LOGE("eglMakeCurrent failed: 0x%x", static_cast<unsigned>(eglGetError()));
+        eglDestroyContext(outDisplay, outContext);
+        outContext = EGL_NO_CONTEXT;
+        eglDestroySurface(outDisplay, outSurface);
+        outSurface = EGL_NO_SURFACE;
+        eglTerminate(outDisplay);
+        outDisplay = EGL_NO_DISPLAY;
+        return false;
+    }
+
+    eglSwapInterval(outDisplay, 1);
+    LOGI("EGL ready");
     return true;
 }
 
-void destroyOverlay(OverlaySurface& out) {
-    if (out.eglDisplay != EGL_NO_DISPLAY) {
-        eglMakeCurrent(out.eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        if (out.eglContext != EGL_NO_CONTEXT) eglDestroyContext(out.eglDisplay, out.eglContext);
-        if (out.eglSurface != EGL_NO_SURFACE) eglDestroySurface(out.eglDisplay, out.eglSurface);
-        eglTerminate(out.eglDisplay);
+void destroyEGL(EGLDisplay& display, EGLSurface& surface, EGLContext& context) {
+    if (display != EGL_NO_DISPLAY) {
+        eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        if (context != EGL_NO_CONTEXT) {
+            eglDestroyContext(display, context);
+            context = EGL_NO_CONTEXT;
+        }
+        if (surface != EGL_NO_SURFACE) {
+            eglDestroySurface(display, surface);
+            surface = EGL_NO_SURFACE;
+        }
+        eglTerminate(display);
+        display = EGL_NO_DISPLAY;
     }
-    out.eglDisplay = EGL_NO_DISPLAY; out.eglContext = EGL_NO_CONTEXT; out.eglSurface = EGL_NO_SURFACE;
-    NativeOverlay_Destroy(&out.overlay);
 }
 
 }  // namespace
 
-int main(int argc, char** argv) {
-    (void)argc; (void)argv;
+extern "C" JNIEXPORT jint JNICALL
+Java_com_android_support_V2Overlay_nativeRun(JNIEnv* env, jclass, jobject surface, jint width, jint height) {
+    g_running.store(true);
+    v2::ExitRequested().store(false);
+
     signal(SIGINT, onSignal);
     signal(SIGTERM, onSignal);
-    LOGI("v2-mod native overlay starting");
 
-    if (geteuid() != 0) {
-        LOGE("Root required. Re-run with: su -c /data/local/tmp/v2mod");
-        fprintf(stderr, "Root required. Run with su -c\n");
+    LOGI("nativeRun start %dx%d uid=%d", width, height, static_cast<int>(geteuid()));
+
+    if (env == nullptr || surface == nullptr) {
+        LOGE("nativeRun: env or surface is null");
         return 1;
     }
+    if (width <= 0 || height <= 0) {
+        LOGE("nativeRun: invalid size %dx%d", width, height);
+        return 1;
+    }
+
+    ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
+    if (window == nullptr) {
+        LOGE("ANativeWindow_fromSurface returned null");
+        return 1;
+    }
+
+    int winW = ANativeWindow_getWidth(window);
+    int winH = ANativeWindow_getHeight(window);
+    LOGI("ANativeWindow %dx%d (requested %dx%d)", winW, winH, width, height);
+    if (winW <= 0 || winH <= 0) {
+        winW = width;
+        winH = height;
+    }
+    if (winW <= 0 || winH <= 0) {
+        LOGE("invalid window size");
+        ANativeWindow_release(window);
+        return 1;
+    }
+    g_screenW.store(winW);
+    g_screenH.store(winH);
 
     v2::LoadConfig();
     v2::WriteStatus();
@@ -269,47 +430,47 @@ int main(int argc, char** argv) {
 
     std::thread inThr(inputThread);
 
-    bool imguiSetup = false;
-    while (g_running.load() && !v2::ExitRequested().load()) {
-        OverlaySurface ov{};
-        if (!createOverlayEGL(ov)) {
-            LOGE("Overlay creation failed");
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            continue;
-        }
-        if (!initEGLWindow(ov)) {
-            destroyOverlay(ov);
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            continue;
-        }
-        if (!imguiSetup) {
-            v2menu::SetupImGui();
-            imguiSetup = true;
-        } else {
-            ImGui_ImplOpenGL3_Shutdown();
-            ImGui_ImplOpenGL3_Init("#version 300 es");
-        }
+    EGLDisplay eglDisplay = EGL_NO_DISPLAY;
+    EGLSurface eglSurface = EGL_NO_SURFACE;
+    EGLContext eglContext = EGL_NO_CONTEXT;
+    if (!initEGL(window, winW, winH, eglDisplay, eglSurface, eglContext)) {
+        LOGE("initEGL failed, exiting cleanly");
+        g_running.store(false);
+        v2::RequestExit();
+        if (inThr.joinable()) inThr.join();
+        ext::Stop();
+        ANativeWindow_release(window);
+        return 1;
+    }
 
-        int frameCount = 0;
-        while (g_running.load() && !v2::ExitRequested().load()) {
-        eglQuerySurface(ov.eglDisplay, ov.eglSurface, EGL_WIDTH, &ov.w);
-        eglQuerySurface(ov.eglDisplay, ov.eglSurface, EGL_HEIGHT, &ov.h);
-        if (ov.w > 0 && ov.h > 0) { g_screenW.store(ov.w); g_screenH.store(ov.h); }
-        if ((++frameCount % 120) == 0) {
-            int dw=0, dh=0; getDisplaySize(dw, dh);
-            if (dw > 0 && dh > 0 && (dw != ov.overlay.width || dh != ov.overlay.height)) {
-                LOGI("Display size changed %dx%d -> %dx%d, recreating overlay", ov.overlay.width, ov.overlay.height, dw, dh);
-                break; // recreate in outer loop
+    v2menu::SetupImGui();
+
+    int frameCount = 0;
+    while (g_running.load() && !v2::ExitRequested().load()) {
+        EGLint curW = winW, curH = winH;
+        if (eglQuerySurface(eglDisplay, eglSurface, EGL_WIDTH, &curW) == EGL_TRUE &&
+            eglQuerySurface(eglDisplay, eglSurface, EGL_HEIGHT, &curH) == EGL_TRUE) {
+            if (curW > 0 && curH > 0) {
+                winW = curW;
+                winH = curH;
+                g_screenW.store(winW);
+                g_screenH.store(winH);
             }
         }
+
         updateRotationAndSize();
 
-        glViewport(0, 0, ov.w, ov.h);
-        glClearColor(0, 0, 0, 0);
-        glClear(GL_COLOR_BUFFER_BIT);
+        if ((++frameCount % 300) == 0) {
+            v2::LoadConfig();
+        }
+
+        glViewport(0, 0, winW, winH);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2((float)ov.w, (float)ov.h);
+        io.DisplaySize = ImVec2(static_cast<float>(winW), static_cast<float>(winH));
+        io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
         {
             std::lock_guard<std::mutex> lk(g_inputMu);
             io.MousePos = g_touchPos;
@@ -320,7 +481,8 @@ int main(int argc, char** argv) {
         ImGui::NewFrame();
 
         ext::FrameData f = ext::Snapshot();
-        f.width = ov.w; f.height = ov.h;
+        f.width = winW;
+        f.height = winH;
         {
             std::lock_guard<std::mutex> lk(v2::InfoMutex());
             auto& i = v2::Info();
@@ -341,18 +503,34 @@ int main(int argc, char** argv) {
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         ImGui::EndFrame();
-        eglSwapBuffers(ov.eglDisplay, ov.eglSurface);
+
+        if (eglSwapBuffers(eglDisplay, eglSurface) != EGL_TRUE) {
+            EGLint err = eglGetError();
+            LOGW("eglSwapBuffers failed: 0x%x", static_cast<unsigned>(err));
+            if (err == EGL_BAD_SURFACE || err == EGL_BAD_NATIVE_WINDOW || err == EGL_CONTEXT_LOST) {
+                LOGE("EGL surface/context lost, exiting");
+                break;
+            }
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
-    destroyOverlay(ov);
-    if (v2::ExitRequested().load() || !g_running.load()) break;
-        // size changed; recreate overlay
-    }
+    LOGI("nativeRun shutting down");
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui::DestroyContext();
+
+    destroyEGL(eglDisplay, eglSurface, eglContext);
 
     g_running.store(false);
+    v2::RequestExit();
     if (inThr.joinable()) inThr.join();
     ext::Stop();
-    LOGI("v2-mod native overlay exited");
+
+    ANativeWindow_release(window);
+
+    v2::WriteStatus();
+    LOGI("nativeRun exit clean");
     return 0;
 }

@@ -65,75 +65,181 @@ jobs:
             echo "No Android.mk found" >&2
             exit 1
           fi
-          BIN_PATH=$(find v2-mod/src/main/jni/libs/arm64-v8a -type f -name 'v2mod' | head -n1)
-          SO_PATH=$(find v2-mod/src/main/jni/libs/arm64-v8a -type f -name '*.so' | head -n1)
-          if [ -z "$BIN_PATH" ] || [ ! -f "$BIN_PATH" ]; then
-            echo "Built v2mod binary not found" >&2
+          SO_PATH=$(find v2-mod/src/main/jni/libs/arm64-v8a -type f -name 'libv2mod.so' | head -n1)
+          MEOW_PATH=$(find v2-mod/src/main/jni/libs/arm64-v8a -type f -name 'libMEOW.so' | head -n1)
+          if [ -z "$SO_PATH" ] || [ ! -f "$SO_PATH" ]; then
+            echo "Built libv2mod.so not found" >&2
             find v2-mod/src/main/jni/libs -maxdepth 3 -type f -print || true
             exit 1
           fi
-          echo "bin_path=$BIN_PATH" >> "$GITHUB_OUTPUT"
-          echo "so_path=${SO_PATH:-}" >> "$GITHUB_OUTPUT"
-          echo "Built binary: $BIN_PATH"
-          file "$BIN_PATH"
-          if [ -n "$SO_PATH" ] && [ -f "$SO_PATH" ]; then file "$SO_PATH"; fi
+          echo "so_path=$SO_PATH" >> "$GITHUB_OUTPUT"
+          echo "meow_path=${MEOW_PATH:-}" >> "$GITHUB_OUTPUT"
+          echo "Built: $SO_PATH"
+          file "$SO_PATH"
+          if [ -n "$MEOW_PATH" ] && [ -f "$MEOW_PATH" ]; then file "$MEOW_PATH"; fi
+
+      - name: Compile Java to DEX (V2Overlay)
+        id: dex
+        run: |
+          set -euo pipefail
+          ANDROID_JAR="$ANDROID_HOME/platforms/android-34/android.jar"
+          D8="$ANDROID_HOME/build-tools/34.0.0/d8"
+          if [ ! -f "$ANDROID_JAR" ]; then echo "android.jar not found: $ANDROID_JAR" >&2; exit 1; fi
+          if [ ! -x "$D8" ]; then echo "d8 not found: $D8" >&2; exit 1; fi
+          WORK_DIR="$(mktemp -d)"
+          mkdir -p "$WORK_DIR/classes"
+          javac --release 17 -classpath "$ANDROID_JAR" -d "$WORK_DIR/classes" v2-mod/src/main/java/com/android/support/V2Overlay.java
+          "$D8" --output "$WORK_DIR" "$WORK_DIR/classes/com/android/support/"*.class
+          test -f "$WORK_DIR/classes.dex"
+          echo "dex_path=$WORK_DIR/classes.dex" >> "$GITHUB_OUTPUT"
+          echo "work_dir=$WORK_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Package self-extracting v2mod.sh
         run: |
           set -euo pipefail
-          BIN_PATH="${{ steps.build.outputs.bin_path }}"
-          B64=$(base64 -w0 "$BIN_PATH")
+          SO_PATH="${{ steps.build.outputs.so_path }}"
+          DEX_PATH="${{ steps.dex.outputs.dex_path }}"
+          SO_B64=$(base64 -w0 "$SO_PATH")
+          DEX_B64=$(base64 -w0 "$DEX_PATH")
           cat > v2mod.sh <<'SCRIPT'
           #!/system/bin/sh
-          # Self-extracting v2-mod standalone native overlay
-          # Extracts to /data/local/tmp, runs as root, cleans up on exit.
+          # Self-extracting v2-mod standalone overlay (Android 14 / HyperOS 1 compatible)
+          # Uses app_process + JNI SurfaceControl, no private libgui ABI.
           set -eu
 
-          PAYLOAD_BIN="v2mod.bin"
           OUT_DIR="/data/local/tmp"
-          OUT_BIN="$OUT_DIR/$PAYLOAD_BIN"
-          TMP_B64="$OUT_DIR/.v2mod.b64.$$"
+          SO_NAME="libv2mod.so"
+          DEX_NAME="v2mod.dex"
+          OUT_SO="$OUT_DIR/$SO_NAME"
+          OUT_DEX="$OUT_DIR/$DEX_NAME"
+          TMP_SO_B64="$OUT_DIR/.v2mod.so.b64.$$"
+          TMP_DEX_B64="$OUT_DIR/.v2mod.dex.b64.$$"
 
           cleanup() {
-            rm -f "$TMP_B64" "$OUT_BIN" 2>/dev/null || true
+            rm -f "$TMP_SO_B64" "$TMP_DEX_B64" "$OUT_SO" "$OUT_DEX" 2>/dev/null || true
           }
           trap cleanup EXIT INT TERM
 
-          extract_payload() {
-            cat > "$TMP_B64" <<'__PAYLOAD__'
-          SCRIPT
-          printf '%s\n' "$B64" >> v2mod.sh
-          cat >> v2mod.sh <<'SCRIPT'
-          __PAYLOAD__
+          decode_b64() {
+            _in="$1"; _out="$2"
             if command -v base64 >/dev/null 2>&1; then
-              base64 -d "$TMP_B64" > "$OUT_BIN"
+              base64 -d "$_in" > "$_out"
             elif command -v busybox >/dev/null 2>&1; then
-              busybox base64 -d "$TMP_B64" > "$OUT_BIN"
+              busybox base64 -d "$_in" > "$_out"
             else
               echo "[!] base64 decoder not found" >&2
               exit 1
             fi
-            rm -f "$TMP_B64"
-            chmod 755 "$OUT_BIN"
           }
+
+          extract_payloads() {
+            cat > "$TMP_SO_B64" <<'__V2MOD_SO__'
+          SCRIPT
+          printf '%s\n' "$SO_B64" >> v2mod.sh
+          cat >> v2mod.sh <<'SCRIPT'
+          __V2MOD_SO__
+            cat > "$TMP_DEX_B64" <<'__V2MOD_DEX__'
+          SCRIPT
+          printf '%s\n' "$DEX_B64" >> v2mod.sh
+          cat >> v2mod.sh <<'SCRIPT'
+          __V2MOD_DEX__
+            decode_b64 "$TMP_SO_B64" "$OUT_SO"
+            decode_b64 "$TMP_DEX_B64" "$OUT_DEX"
+            rm -f "$TMP_SO_B64" "$TMP_DEX_B64"
+            chmod 755 "$OUT_SO"
+            chmod 644 "$OUT_DEX"
+            # Best-effort SELinux context for Android 14/Enforcing
+            chcon u:object_r:system_file:s0 "$OUT_SO" 2>/dev/null || \
+              chcon u:object_r:apk_data_file:s0 "$OUT_SO" 2>/dev/null || true
+            chcon u:object_r:system_file:s0 "$OUT_DEX" 2>/dev/null || \
+              chcon u:object_r:apk_data_file:s0 "$OUT_DEX" 2>/dev/null || true
+          }
+
+          SCRIPT_PATH="$0"
+          if command -v readlink >/dev/null 2>&1; then
+            _rp=$(readlink -f "$0" 2>/dev/null || true)
+            if [ -n "$_rp" ]; then SCRIPT_PATH="$_rp"; fi
+          fi
 
           if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
             if command -v su >/dev/null 2>&1; then
               echo "[*] Root required, re-exec via su"
-              exec su -c "sh '$0' "$@""
+              exec su -c "sh '$SCRIPT_PATH' $*"
             fi
-            echo "[!] Root not available. Run: su -c 'sh $0'" >&2
+            echo "[!] Root not available. Run: su -c 'sh $SCRIPT_PATH'" >&2
             exit 1
           fi
 
-          export PATH="/system/bin:/system/xbin:/vendor/bin:/sbin:$PATH"
-          echo "[*] Extracting v2mod standalone to $OUT_BIN"
-          extract_payload
+          DISP_W=""
+          DISP_H=""
+          WM_LINE=$(wm size 2>/dev/null | tail -n1 || true)
+          if [ -n "$WM_LINE" ]; then
+            DISP_WH=$(echo "$WM_LINE" | tr -cd '0-9x' | sed -n 's/.*\([0-9][0-9]*x[0-9][0-9]*\).*/\1/p')
+            case "$DISP_WH" in
+              *x*)
+                DISP_W=${DISP_WH%x*}
+                DISP_H=${DISP_WH#*x}
+                ;;
+            esac
+          fi
+
+          echo "[*] Extracting v2mod to $OUT_DIR"
+          extract_payloads
+
+          APP_PROCESS="/system/bin/app_process"
+          if [ ! -x "$APP_PROCESS" ] && [ -x "/system/bin/app_process64" ]; then
+            APP_PROCESS="/system/bin/app_process64"
+          fi
+          if [ ! -x "$APP_PROCESS" ]; then
+            echo "[!] app_process not found" >&2
+            exit 1
+          fi
+
+          # Capture Android runtime env vars before sanitizing (needed by app_process).
+          BCP=""
+          ZPID=$(pidof zygote64 2>/dev/null | awk '{print $1}' || true)
+          if [ -z "$ZPID" ]; then ZPID=$(pidof zygote 2>/dev/null | awk '{print $1}' || true); fi
+          if [ -n "$ZPID" ] && [ -r "/proc/$ZPID/environ" ]; then
+            BCP=$(tr '\0' '\n' < "/proc/$ZPID/environ" 2>/dev/null | grep '^BOOTCLASSPATH=' | head -n1 | sed 's/^BOOTCLASSPATH=//' || true)
+          fi
+          SSCP=""
+          if [ -n "$ZPID" ] && [ -r "/proc/$ZPID/environ" ]; then
+            SSCP=$(tr '\0' '\n' < "/proc/$ZPID/environ" 2>/dev/null | grep '^SYSTEMSERVERCLASSPATH=' | head -n1 | sed 's/^SYSTEMSERVERCLASSPATH=//' || true)
+          fi
+
           echo "[*] Starting v2mod overlay (Ctrl+C to exit)"
-          "$OUT_BIN" "$@"
-          STATUS=$?
+          # Sanitize Termux env to avoid symbol/library conflicts on Android 14/HyperOS
+          # env -i clears LD_LIBRARY_PATH/LD_PRELOAD inherited from Termux.
+          STATUS=0
+          if [ -n "$DISP_W" ] && [ -n "$DISP_H" ]; then
+            env -i \
+              PATH=/system/bin:/system/xbin \
+              ANDROID_DATA=/data \
+              ANDROID_ROOT=/system \
+              ANDROID_ART_ROOT=/apex/com.android.art \
+              ANDROID_I18N_ROOT=/apex/com.android.i18n \
+              ANDROID_RUNTIME_ROOT=/apex/com.android.runtime \
+              ANDROID_TZDATA_ROOT=/apex/com.android.tzdata \
+              BOOTCLASSPATH="$BCP" \
+              SYSTEMSERVERCLASSPATH="$SSCP" \
+              CLASSPATH="$OUT_DEX" \
+              "$APP_PROCESS" /system/bin com.android.support.V2Overlay --width "$DISP_W" --height "$DISP_H" || STATUS=$?
+          else
+            env -i \
+              PATH=/system/bin:/system/xbin \
+              ANDROID_DATA=/data \
+              ANDROID_ROOT=/system \
+              ANDROID_ART_ROOT=/apex/com.android.art \
+              ANDROID_I18N_ROOT=/apex/com.android.i18n \
+              ANDROID_RUNTIME_ROOT=/apex/com.android.runtime \
+              ANDROID_TZDATA_ROOT=/apex/com.android.tzdata \
+              BOOTCLASSPATH="$BCP" \
+              SYSTEMSERVERCLASSPATH="$SSCP" \
+              CLASSPATH="$OUT_DEX" \
+              "$APP_PROCESS" /system/bin com.android.support.V2Overlay || STATUS=$?
+          fi
           echo "[*] v2mod exited with status $STATUS"
-          exit $STATUS
+          exit "$STATUS"
           SCRIPT
           chmod +x v2mod.sh
           ls -lh v2mod.sh
@@ -144,8 +250,8 @@ jobs:
           name: v2-mod-standalone
           path: |
             v2mod.sh
-            v2-mod/src/main/jni/libs/arm64-v8a/v2mod
-            v2-mod/src/main/jni/libs/arm64-v8a/*.so
+            v2-mod/src/main/jni/libs/arm64-v8a/libv2mod.so
+            v2-mod/src/main/jni/libs/arm64-v8a/libMEOW.so
 
       - name: Publish GitHub Release (latest)
         uses: softprops/action-gh-release@v2

@@ -39,7 +39,7 @@ LOCAL_CFLAGS := -fvisibility=hidden
 
 include $(BUILD_SHARED_LIBRARY)
 
-# ---------- Standalone native overlay executable ----------
+# ---------- Standalone native overlay shared library (loaded by app_process/JNI) ----------
 include $(CLEAR_VARS)
 LOCAL_MODULE := v2mod
 
@@ -56,7 +56,6 @@ LOCAL_C_INCLUDES := \
 
 STANDALONE_SRCS := \
     native_main.cpp \
-    native_surface.cpp \
     menu.cpp \
     feature_state.cpp \
     external_engine.cpp \
@@ -66,7 +65,7 @@ STANDALONE_SRCS := \
 
 STANDALONE_SRCS += $(wildcard $(LOCAL_PATH)/src/xdl/*.c)
 STANDALONE_SRCS += $(wildcard $(LOCAL_PATH)/src/ImGui/*.cpp)
-# Exclude imgui_impl_android for standalone (no JNI/ANativeActivity)
+# Exclude imgui_impl_android for standalone (no ANativeActivity)
 STANDALONE_SRCS := $(filter-out $(LOCAL_PATH)/src/ImGui/backends/imgui_impl_android.cpp,$(STANDALONE_SRCS))
 STANDALONE_SRCS += $(LOCAL_PATH)/src/ImGui/backends/imgui_impl_opengl3.cpp
 
@@ -76,9 +75,8 @@ STANDALONE_SRCS := $(STANDALONE_SRCS:$(LOCAL_PATH)/%=%)
 LOCAL_SRC_FILES := $(STANDALONE_SRCS)
 
 LOCAL_STATIC_LIBRARIES := dobby
-LOCAL_LDLIBS := -llog -landroid -lEGL -lGLESv3 -ldl
+LOCAL_LDLIBS := -llog -landroid -lEGL -lGLESv3 -ldl -ljnigraphics
 LOCAL_CPPFLAGS := -std=c++17 -fvisibility=hidden -fno-exceptions -fpermissive -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers
 LOCAL_CFLAGS := -fvisibility=hidden
-LOCAL_LDFLAGS := -fPIE -pie
 
-include $(BUILD_EXECUTABLE)
+include $(BUILD_SHARED_LIBRARY)
