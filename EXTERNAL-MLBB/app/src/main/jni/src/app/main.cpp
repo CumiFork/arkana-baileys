@@ -57,7 +57,7 @@ extern bool isBeingBlocked;
 
 using namespace Memory;
 bool is_root_mode = true;
-bool main_thread_flag = true;
+std::atomic<bool> main_thread_flag(true);
 static bool show_menu = true;
 std::string g_package_name = xorstr_("com.mobile.legends");
 
@@ -271,18 +271,28 @@ struct Camera {
 };
 Matrix4x4 _vMatrix;
 bool WorldToScreen(Vector3 from, Vector2 *to) {
+  if (!to) return false;
+  if (!std::isfinite(from.X) || !std::isfinite(from.Y) || !std::isfinite(from.Z))
+    return false;
+
   float w = _vMatrix.m30 * from.X + _vMatrix.m31 * from.Y +
             _vMatrix.m32 * from.Z + _vMatrix.m33;
-  if (w < 0.01f)
+  if (!std::isfinite(w) || w <= 0.001f)
     return false;
 
   auto viewMatrix = _vMatrix.MultiplyPoint(from);
+  if (!std::isfinite(viewMatrix.X) || !std::isfinite(viewMatrix.Y) || !std::isfinite(viewMatrix.Z))
+    return false;
+
   auto screenPos =
           Vector3(viewMatrix.X + 1.0f, viewMatrix.Y + 1.0f, viewMatrix.Z + 1.0f) /
           2.0f;
-  *to = Vector2(screenPos.X * abs_ScreenX,
-                abs_ScreenY - (screenPos.Y * abs_ScreenY));
+  float sx = screenPos.X * abs_ScreenX;
+  float sy = abs_ScreenY - (screenPos.Y * abs_ScreenY);
+  if (!std::isfinite(sx) || !std::isfinite(sy))
+    return false;
 
+  *to = Vector2(sx, sy);
   return true;
 }
 void FindPoint(Vector2 origin, Vector2 &point, int screenwidth,
@@ -1247,6 +1257,7 @@ void DrawMonster(ImDrawList *Draw) {
           OFF_BM(ListArrayOffset);
   uint stop_player =
           Read<uint>(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListCountOffset));
+  if (stop_player > 64u) stop_player = 64u;
 
   
   long monster =
@@ -1254,6 +1265,7 @@ void DrawMonster(ImDrawList *Draw) {
           OFF_BM(ListArrayOffset);
   uint stop_monster =
           Read<uint>(ReadPtr(a32 + OFF_BM(ShowMonsters)) + OFF_BM(ListCountOffset));
+  if (stop_monster > 64u) stop_monster = 64u;
   ProcessAutoRetribution(selfp, monster, stop_monster);
 
   for (int i = 0; i < stop_player; i++) {
@@ -1799,8 +1811,9 @@ namespace AutoAim {
       const long playerBase =
               ReadPtr(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListDataOffset)) +
               OFF_BM(ListArrayOffset);
-      const uint playerCount =
+      uint playerCount =
               Read<uint>(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListCountOffset));
+      if (playerCount > 64u) playerCount = 64u;
       for (uint i = 0; i < playerCount && idx < maxTargets; ++i) {
         const uintptr_t objAddr = ReadPtr(playerBase + (i << 3));
         if (!objAddr)
@@ -1836,8 +1849,9 @@ namespace AutoAim {
       const long monsterBase =
               ReadPtr(ReadPtr(a32 + OFF_BM(ShowMonsters)) + OFF_BM(ListDataOffset)) +
               OFF_BM(ListArrayOffset);
-      const uint monsterCount =
+      uint monsterCount =
               Read<uint>(ReadPtr(a32 + OFF_BM(ShowMonsters)) + OFF_BM(ListCountOffset));
+      if (monsterCount > 64u) monsterCount = 64u;
       for (uint i = 0; i < monsterCount && idx < maxTargets; ++i) {
         const uintptr_t objAddr = ReadPtr(monsterBase + (i << 3));
         if (!objAddr)
@@ -3329,9 +3343,10 @@ void Layout_tick_UI() {
                 if (ImGui::SliderFloat(xorstr_("UI Opacity"), &opacity, 0.1f, 1.0f)) {
                   ImGui::GetStyle().Alpha = opacity;
                 }
-
-                  main_thread_flag = false;
+                if (ImGui::Button(xorstr_("EXIT"), ImVec2(-1, 0))) {
+                  main_thread_flag.store(false);
                 }
+              }
               ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
@@ -3433,19 +3448,7 @@ __attribute__((visibility("default"))) void *game_worker(void *) {
   return nullptr;
 }
 
-#include <sys/wait.h>
-
 __attribute__((visibility("default"))) int main(int argc, char *argv[]) {
-  
-  pid_t watchdog_pid = fork();
-  if (watchdog_pid < 0) {
-    
-  } else if (watchdog_pid > 0) {
-    
-    int status;
-    waitpid(watchdog_pid, &status, 0); 
-  }
-
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
   
@@ -3484,10 +3487,24 @@ __attribute__((visibility("default"))) int main(int argc, char *argv[]) {
 
   
   screen_config();
-  ::abs_ScreenX = (displayInfo.height > displayInfo.width ? displayInfo.height
-                                                          : displayInfo.width);
-  ::abs_ScreenY = (displayInfo.height < displayInfo.width ? displayInfo.height
-                                                          : displayInfo.width);
+  int sw = static_cast<int>(displayInfo.width);
+  int sh = static_cast<int>(displayInfo.height);
+  if (sw <= 0 || sh <= 0) {
+    char wmBuf[128] = {0};
+    FILE *fp = popen("wm size 2>/dev/null | tail -n 1", "r");
+    if (fp) {
+      fgets(wmBuf, sizeof(wmBuf), fp);
+      pclose(fp);
+    }
+    int fw = 0, fh = 0;
+    if (sscanf(wmBuf, "Physical size: %dx%d", &fw, &fh) == 2 ||
+        sscanf(wmBuf, "Override size: %dx%d", &fw, &fh) == 2) {
+      sw = fw; sh = fh;
+    }
+  }
+  if (sw <= 0 || sh <= 0) { sw = 1080; sh = 2400; }
+  ::abs_ScreenX = (sh > sw ? sh : sw);
+  ::abs_ScreenY = (sh < sw ? sh : sw);
   ::native_window_screen_x = ::abs_ScreenX;
   ::native_window_screen_y = ::abs_ScreenY;
   if (!initGUI_draw(native_window_screen_x, native_window_screen_y, true))

@@ -1,6 +1,7 @@
 #include "Android_draw/draw.h"
 #include "../font/SabFont.h"
 #include "../font/verdana.h"
+#include <android/log.h>
 EGLDisplay display = EGL_NO_DISPLAY;
 EGLConfig config;
 EGLSurface surface = EGL_NO_SURFACE;
@@ -43,9 +44,14 @@ bool init_egl(uint32_t _screen_x, uint32_t _screen_y, bool log) {
     system ("settings put global block_untrusted_touches 0 > /dev/null 2>&1");
     system ("settings put secure block_untrusted_touches 0 > /dev/null 2>&1");
     ::native_window = android::ANativeWindowCreator::Create("AImGui", _screen_x, _screen_y, false);
+    if (!native_window) {
+        return false;
+    }
     ANativeWindow_acquire(native_window);
     display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (display == EGL_NO_DISPLAY) {
+        ANativeWindow_release(native_window);
+        native_window = nullptr;
         return false;
     }
     if (log) {
@@ -179,7 +185,29 @@ void drawEnd() {
     #ifdef USE_OPENGL
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        eglSwapBuffers(display, surface);
+        if (eglSwapBuffers(display, surface) == EGL_FALSE) {
+            EGLint err = eglGetError();
+            __android_log_print(ANDROID_LOG_WARN, "AImGui", "eglSwapBuffers failed: 0x%x", err);
+            if (err == EGL_BAD_SURFACE || err == EGL_BAD_NATIVE_WINDOW || err == EGL_CONTEXT_LOST) {
+                if (display != EGL_NO_DISPLAY) {
+                    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+                    if (surface != EGL_NO_SURFACE) {
+                        eglDestroySurface(display, surface);
+                        surface = EGL_NO_SURFACE;
+                    }
+                }
+                if (native_window && display != EGL_NO_DISPLAY) {
+                    surface = eglCreateWindowSurface(display, config, native_window, nullptr);
+                    if (surface != EGL_NO_SURFACE) {
+                        if (eglMakeCurrent(display, surface, surface, context) == EGL_FALSE) {
+                            __android_log_print(ANDROID_LOG_WARN, "AImGui", "eglMakeCurrent recreate failed: 0x%x", eglGetError());
+                        }
+                    } else {
+                        __android_log_print(ANDROID_LOG_WARN, "AImGui", "eglCreateWindowSurface recreate failed: 0x%x", eglGetError());
+                    }
+                }
+            }
+        }
     #else
         FrameRender(ImGui::GetDrawData());
         FramePresent();
@@ -215,7 +243,10 @@ void shutdown() {
         CleanupVulkanWindow();
         CleanupVulkan();
     #endif
-    ANativeWindow_release(native_window);
-    android::ANativeWindowCreator::Destroy(native_window);
+    if (native_window) {
+        ANativeWindow_release(native_window);
+        android::ANativeWindowCreator::Destroy(native_window);
+        native_window = nullptr;
+    }
     ::g_Initialized = false;
 }

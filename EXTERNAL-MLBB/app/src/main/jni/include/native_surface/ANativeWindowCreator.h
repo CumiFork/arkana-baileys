@@ -244,17 +244,28 @@ namespace android {
         };
 
         struct String8 {
-            char data[1024];
-            String8(const char *const string) { Functionals::GetInstance().String8__Constructor(data, string); }
-            ~String8() { Functionals::GetInstance().String8__Destructor(data); }
-            operator void *() { return reinterpret_cast<void *>(data); }
+            char data[1024]{};
+            bool valid = false;
+            String8(const char *const string) {
+                auto &fn = Functionals::GetInstance();
+                if (fn.String8__Constructor) { fn.String8__Constructor(data, string); valid = true; }
+            }
+            ~String8() { if (valid && Functionals::GetInstance().String8__Destructor) Functionals::GetInstance().String8__Destructor(data); }
+            operator void *() { return valid ? reinterpret_cast<void *>(data) : nullptr; }
         };
 
         struct LayerMetadata {
-            char data[1024];
-            LayerMetadata() { if (9 < Functionals::GetInstance().systemVersion) Functionals::GetInstance().LayerMetadata__Constructor(data); }
-            void setInt32(uint32_t type, int32_t value) { if (9 < Functionals::GetInstance().systemVersion) Functionals::GetInstance().LayerMetadata__setInt32(data, type, value); }
-            operator void *() { return (9 < Functionals::GetInstance().systemVersion) ? reinterpret_cast<void *>(data) : nullptr; }
+            char data[1024]{};
+            bool valid = false;
+            LayerMetadata() {
+                auto &fn = Functionals::GetInstance();
+                if (9 < fn.systemVersion && fn.LayerMetadata__Constructor) { fn.LayerMetadata__Constructor(data); valid = true; }
+            }
+            void setInt32(uint32_t type, int32_t value) {
+                auto &fn = Functionals::GetInstance();
+                if (valid && fn.LayerMetadata__setInt32) fn.LayerMetadata__setInt32(data, type, value);
+            }
+            operator void *() { return valid ? reinterpret_cast<void *>(data) : nullptr; }
         };
 
         struct Surface {};
@@ -279,73 +290,103 @@ namespace android {
         };
 
         struct SurfaceComposerClientTransaction {
-            char data[1024];
-            SurfaceComposerClientTransaction() { Functionals::GetInstance().SurfaceComposerClient__Transaction__Constructor(data); }
-            void *SetLayer(StrongPointer<void> &surfaceControl, int32_t z) { return Functionals::GetInstance().SurfaceComposerClient__Transaction__SetLayer(data, surfaceControl, z); }
-            void *SetTrustedOverlay(StrongPointer<void> &surfaceControl, bool isTrustedOverlay) { return Functionals::GetInstance().SurfaceComposerClient__Transaction__SetTrustedOverlay(data, surfaceControl, isTrustedOverlay); }
+            char data[1024]{};
+            bool valid = false;
+            SurfaceComposerClientTransaction() {
+                auto &fn = Functionals::GetInstance();
+                if (fn.SurfaceComposerClient__Transaction__Constructor) { fn.SurfaceComposerClient__Transaction__Constructor(data); valid = true; }
+            }
+            void *SetLayer(StrongPointer<void> &surfaceControl, int32_t z) {
+                auto &fn = Functionals::GetInstance();
+                if (!valid || !fn.SurfaceComposerClient__Transaction__SetLayer) return nullptr;
+                return fn.SurfaceComposerClient__Transaction__SetLayer(data, surfaceControl, z);
+            }
+            void *SetTrustedOverlay(StrongPointer<void> &surfaceControl, bool isTrustedOverlay) {
+                auto &fn = Functionals::GetInstance();
+                if (!valid || !fn.SurfaceComposerClient__Transaction__SetTrustedOverlay) return nullptr;
+                return fn.SurfaceComposerClient__Transaction__SetTrustedOverlay(data, surfaceControl, isTrustedOverlay);
+            }
             int32_t Apply(bool synchronous, bool oneWay) {
-                if (12 >= Functionals::GetInstance().systemVersion)
-                    return reinterpret_cast<int32_t (*)(void *, bool)>(Functionals::GetInstance().SurfaceComposerClient__Transaction__Apply)(data, synchronous);
-                return Functionals::GetInstance().SurfaceComposerClient__Transaction__Apply(data, synchronous, oneWay);
+                auto &fn = Functionals::GetInstance();
+                if (!valid || !fn.SurfaceComposerClient__Transaction__Apply) return -1;
+                if (12 >= fn.systemVersion)
+                    return reinterpret_cast<int32_t (*)(void *, bool)>(fn.SurfaceComposerClient__Transaction__Apply)(data, synchronous);
+                return fn.SurfaceComposerClient__Transaction__Apply(data, synchronous, oneWay);
             }
         };
 
         struct SurfaceComposerClient {
-            char data[1024];
+            char data[1024]{};
+            bool valid = false;
             SurfaceComposerClient() {
-                Functionals::GetInstance().SurfaceComposerClient__Constructor(data);
-                Functionals::GetInstance().RefBase__IncStrong(data, this);
+                auto &fn = Functionals::GetInstance();
+                if (fn.SurfaceComposerClient__Constructor && fn.RefBase__IncStrong) {
+                    fn.SurfaceComposerClient__Constructor(data);
+                    fn.RefBase__IncStrong(data, this);
+                    valid = true;
+                }
             }
             SurfaceControl CreateSurface(const char *name, int32_t width, int32_t height, bool hide, bool secure) {
+                auto &fn = Functionals::GetInstance();
+                if (!valid || !fn.SurfaceComposerClient__CreateSurface) return {};
                 void *parentHandle = nullptr;
                 String8 windowName(name);
                 LayerMetadata layerMetadata;
                 uint32_t flags = secure ? 0x80 : 0;
-                if (12 <= Functionals::GetInstance().systemVersion) {
+                if (12 <= fn.systemVersion) {
                     static void *fakeParentHandleForBinder = nullptr;
                     parentHandle = &fakeParentHandleForBinder;
                 }
                 StrongPointer<void> result{};
-                if (Functionals::GetInstance().systemVersion <= 9) {
+                if (fn.systemVersion <= 9) {
                     int value = -1;
                     if (!secure && hide) value = 441731;
-                    result = reinterpret_cast<StrongPointer<void> (*)(void *, void *, uint32_t, uint32_t, int32_t, uint32_t, void *, int32_t, int32_t)>(Functionals::GetInstance().SurfaceComposerClient__CreateSurface)(data, windowName, width, height, 1, flags, nullptr, value, -1);
+                    result = reinterpret_cast<StrongPointer<void> (*)(void *, void *, uint32_t, uint32_t, int32_t, uint32_t, void *, int32_t, int32_t)>(fn.SurfaceComposerClient__CreateSurface)(data, windowName, width, height, 1, flags, nullptr, value, -1);
                 } else {
                     if (!secure && hide) {
-                        if (Functionals::GetInstance().systemVersion > 9 && Functionals::GetInstance().systemVersion < 12) {
+                        if (fn.systemVersion > 9 && fn.systemVersion < 12) {
                             layerMetadata.setInt32(2, 441731);
                         } else {
                             flags = 0x40;
                         }
                     }
-                    result = Functionals::GetInstance().SurfaceComposerClient__CreateSurface(data, windowName, width, height, 1, flags, parentHandle, layerMetadata, nullptr);
+                    result = fn.SurfaceComposerClient__CreateSurface(data, windowName, width, height, 1, flags, parentHandle, layerMetadata, nullptr);
                 }
-                if (12 <= Functionals::GetInstance().systemVersion && result) {
+                if (12 <= fn.systemVersion && result) {
                     static SurfaceComposerClientTransaction transaction;
-                    transaction.SetTrustedOverlay(result, true);
-                    transaction.Apply(false, true);
+                    if (transaction.valid) {
+                        transaction.SetTrustedOverlay(result, true);
+                        transaction.Apply(false, true);
+                    }
                 }
                 return {result.get()};
             }
             bool GetDisplayInfo(ui::DisplayState *displayInfo) {
+                if (!displayInfo) return false;
+                auto &fn = Functionals::GetInstance();
                 StrongPointer<void> defaultDisplay;
-                if (9 >= Functionals::GetInstance().systemVersion)
-                    defaultDisplay = Functionals::GetInstance().SurfaceComposerClient__GetBuiltInDisplay(ui::DisplayType::DisplayIdMain);
-                else {
-                    if (14 > Functionals::GetInstance().systemVersion) {
-                        defaultDisplay = Functionals::GetInstance().SurfaceComposerClient__GetInternalDisplayToken();
+                if (9 >= fn.systemVersion) {
+                    if (!fn.SurfaceComposerClient__GetBuiltInDisplay) return false;
+                    defaultDisplay = fn.SurfaceComposerClient__GetBuiltInDisplay(ui::DisplayType::DisplayIdMain);
+                } else {
+                    if (14 > fn.systemVersion) {
+                        if (!fn.SurfaceComposerClient__GetInternalDisplayToken) return false;
+                        defaultDisplay = fn.SurfaceComposerClient__GetInternalDisplayToken();
                     } else {
-                        auto displayIds = Functionals::GetInstance().SurfaceComposerClient__GetPhysicalDisplayIds();
+                        if (!fn.SurfaceComposerClient__GetPhysicalDisplayIds || !fn.SurfaceComposerClient__GetPhysicalDisplayToken) return false;
+                        auto displayIds = fn.SurfaceComposerClient__GetPhysicalDisplayIds();
                         if (displayIds.empty()) return false;
-                        defaultDisplay = Functionals::GetInstance().SurfaceComposerClient__GetPhysicalDisplayToken(displayIds[0]);
+                        defaultDisplay = fn.SurfaceComposerClient__GetPhysicalDisplayToken(displayIds[0]);
                     }
                 }
                 if (nullptr == defaultDisplay.get()) return false;
-                if (11 <= Functionals::GetInstance().systemVersion || Functionals::GetInstance().systemVersion >= 15)
-                    return 0 == Functionals::GetInstance().SurfaceComposerClient__GetDisplayState(defaultDisplay, displayInfo);
-                else {
+                if (11 <= fn.systemVersion || fn.systemVersion >= 15) {
+                    if (!fn.SurfaceComposerClient__GetDisplayState) return false;
+                    return 0 == fn.SurfaceComposerClient__GetDisplayState(defaultDisplay, displayInfo);
+                } else {
+                    if (!fn.SurfaceComposerClient__GetDisplayInfo) return false;
                     ui::DisplayInfo realDisplayInfo{};
-                    if (0 != Functionals::GetInstance().SurfaceComposerClient__GetDisplayInfo(defaultDisplay, &realDisplayInfo)) return false;
+                    if (0 != fn.SurfaceComposerClient__GetDisplayInfo(defaultDisplay, &realDisplayInfo)) return false;
                     displayInfo->layerStackSpaceRect.width = realDisplayInfo.w;
                     displayInfo->layerStackSpaceRect.height = realDisplayInfo.h;
                     displayInfo->orientation = static_cast<ui::Rotation>(realDisplayInfo.orientation);
@@ -407,9 +448,10 @@ namespace android {
                 }
                 break;
             }
+            if (width <= 0 || height <= 0) return nullptr;
             auto surfaceControl = surfaceComposerClient.CreateSurface(name, width, height, hide, secure);
             auto nativeWindow = reinterpret_cast<ANativeWindow *>(surfaceControl.GetSurface());
-            m_cachedSurfaceControl.emplace(nativeWindow, surfaceControl);
+            if (nativeWindow) m_cachedSurfaceControl.emplace(nativeWindow, surfaceControl);
             return nativeWindow;
         }
         static void Destroy(ANativeWindow *nativeWindow) {

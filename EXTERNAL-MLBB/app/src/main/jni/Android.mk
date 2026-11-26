@@ -25,20 +25,16 @@ OPENGL_DRAW = 1
 
 LOCAL_MODULE := Starcool.sh
 
-LOCAL_CFLAGS := -std=c++20 -fvisibility=hidden
-LOCAL_CPPFLAGS := -std=c++20 -fvisibility=hidden
+LOCAL_CFLAGS := -std=c++20 -fvisibility=hidden -Wall -Wno-unused-variable -Wno-unused-function -Wno-format-security
+LOCAL_CPPFLAGS := -std=c++20 -fvisibility=hidden -Wall -Wno-unused-variable -Wno-unused-function -Wno-format-security -fexceptions -fno-rtti
 
 LOCAL_CFLAGS += -DVK_USE_PLATFORM_ANDROID_KHR
 LOCAL_CPPFLAGS += -DVK_USE_PLATFORM_ANDROID_KHR
-
 
 ifeq ($(OPENGL_DRAW), 1)
    LOCAL_CFLAGS += -DUSE_OPENGL
    LOCAL_CPPFLAGS += -DUSE_OPENGL
 endif
-
-LOCAL_CPPFLAGS += -w -s -Wno-error=format-security -fvisibility=hidden -Werror -std=c++17
-LOCAL_CPPFLAGS += -Wno-error=c++11-narrowing -fpermissive -Wall -fexceptions
 #引入头文件到全局#
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/include
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/include/Android_vulkan
