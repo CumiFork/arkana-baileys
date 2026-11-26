@@ -57,7 +57,7 @@ extern bool isBeingBlocked;
 
 using namespace Memory;
 bool is_root_mode = true;
-bool main_thread_flag = true;
+std::atomic<bool> main_thread_flag(true);
 static bool show_menu = true;
 std::string g_package_name = xorstr_("com.mobile.legends");
 
@@ -3343,9 +3343,10 @@ void Layout_tick_UI() {
                 if (ImGui::SliderFloat(xorstr_("UI Opacity"), &opacity, 0.1f, 1.0f)) {
                   ImGui::GetStyle().Alpha = opacity;
                 }
-
-                  main_thread_flag = false;
+                if (ImGui::Button(xorstr_("EXIT"), ImVec2(-1, 0))) {
+                  main_thread_flag.store(false);
                 }
+              }
               ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
@@ -3447,19 +3448,7 @@ __attribute__((visibility("default"))) void *game_worker(void *) {
   return nullptr;
 }
 
-#include <sys/wait.h>
-
 __attribute__((visibility("default"))) int main(int argc, char *argv[]) {
-  
-  pid_t watchdog_pid = fork();
-  if (watchdog_pid < 0) {
-    
-  } else if (watchdog_pid > 0) {
-    
-    int status;
-    waitpid(watchdog_pid, &status, 0); 
-  }
-
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
   
