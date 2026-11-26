@@ -68,17 +68,13 @@ namespace Memory {
         return (g_driver != nullptr);
     }
     
-    inline bool IsValidPtr(uintptr_t addr) {
-        return addr >= 0x10000ULL && addr <= 0x7FFFFFFFFFFFULL;
-    }
-
     inline bool KernelRead(uintptr_t addr, void* buf, size_t size) {
-        if (!g_driver || !buf || size == 0 || !IsValidPtr(addr)) return false;
+        if (!g_driver || !buf || size == 0 || addr == 0) return false;
         return g_driver->read_memory(addr, buf, size);
     }
     
     inline bool KernelWrite(uintptr_t addr, void* buf, size_t size) {
-        if (!g_driver || !buf || size == 0 || !IsValidPtr(addr)) return false;
+        if (!g_driver || !buf || size == 0 || addr == 0) return false;
         return g_driver->write_memory(addr, buf, size);
     }
     
@@ -88,7 +84,6 @@ namespace Memory {
     }
     
     inline bool DoRead(uintptr_t addr, void* buf, size_t size, pid_t pid = g_pid) {
-        if (!buf || size == 0 || !IsValidPtr(addr)) return false;
         if (g_read_mode == ReadMode::KernelDriver && IsKernelDriverReady()) {
             return KernelRead(addr, buf, size);
         }
@@ -96,7 +91,6 @@ namespace Memory {
     }
     
     inline bool DoWrite(uintptr_t addr, void* buf, size_t size, pid_t pid = g_pid) {
-        if (!buf || size == 0 || !IsValidPtr(addr)) return false;
         if (g_read_mode == ReadMode::KernelDriver && IsKernelDriverReady()) {
             return KernelWrite(addr, buf, size);
         }

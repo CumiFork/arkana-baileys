@@ -156,10 +156,7 @@ static void *TypeA(void *arg) {
 
     while (Touch_initialized) {
         auto readSize = (int32_t) read(origfd[i], inputEvent, sizeof(inputEvent));
-        if (readSize <= 0 || (readSize % sizeof(input_event)) != 0) {
-            usleep(1000);
-            continue;
-        }
+        if (readSize <= 0 || (readSize % sizeof(input_event)) != 0) continue;
 
         size_t count = size_t(readSize) / sizeof(input_event);
         for (size_t j = 0; j < count; j++) {
