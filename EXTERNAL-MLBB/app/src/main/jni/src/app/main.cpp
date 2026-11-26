@@ -57,7 +57,7 @@ extern bool isBeingBlocked;
 
 using namespace Memory;
 bool is_root_mode = true;
-std::atomic<bool> main_thread_flag(true);
+bool main_thread_flag = true;
 static bool show_menu = true;
 std::string g_package_name = xorstr_("com.mobile.legends");
 
@@ -271,28 +271,18 @@ struct Camera {
 };
 Matrix4x4 _vMatrix;
 bool WorldToScreen(Vector3 from, Vector2 *to) {
-  if (!to) return false;
-  if (!std::isfinite(from.X) || !std::isfinite(from.Y) || !std::isfinite(from.Z))
-    return false;
-
   float w = _vMatrix.m30 * from.X + _vMatrix.m31 * from.Y +
             _vMatrix.m32 * from.Z + _vMatrix.m33;
-  if (!std::isfinite(w) || w <= 0.001f)
+  if (w < 0.01f)
     return false;
 
   auto viewMatrix = _vMatrix.MultiplyPoint(from);
-  if (!std::isfinite(viewMatrix.X) || !std::isfinite(viewMatrix.Y) || !std::isfinite(viewMatrix.Z))
-    return false;
-
   auto screenPos =
           Vector3(viewMatrix.X + 1.0f, viewMatrix.Y + 1.0f, viewMatrix.Z + 1.0f) /
           2.0f;
-  float sx = screenPos.X * abs_ScreenX;
-  float sy = abs_ScreenY - (screenPos.Y * abs_ScreenY);
-  if (!std::isfinite(sx) || !std::isfinite(sy))
-    return false;
+  *to = Vector2(screenPos.X * abs_ScreenX,
+                abs_ScreenY - (screenPos.Y * abs_ScreenY));
 
-  *to = Vector2(sx, sy);
   return true;
 }
 void FindPoint(Vector2 origin, Vector2 &point, int screenwidth,
@@ -1169,7 +1159,7 @@ void UpdateAutoSwordLing(uintptr_t selfAddr) {
     
     long a1 = ReadPtr(libbase + OFF_BM(BasePtr));
     long a2 = ReadPtr(a1 + OFF_BM(PtrChain1));
-    long a32 = ReadPtr(a2 + OFF_BM(Instance));
+    long a32 = ReadPtr(a2);
 
     long playerList = ReadPtr(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListDataOffset)) + OFF_BM(ListArrayOffset);
     uint playerCount = Read<uint>(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListCountOffset));
@@ -1229,7 +1219,7 @@ void DrawMonster(ImDrawList *Draw) {
   if (!a1) return;
   long a2 = ReadPtr((a1 + ((0x100 | OFF_BM(PtrChain1)) & 0xFF)));
   if (!a2) return;
-  long a32 = ReadPtr(((a2 << 1) >> 1) + OFF_BM(Instance));
+  long a32 = ReadPtr((a2 << 1) >> 1);
   if (!a32) return;
   long selfp = ReadPtr(a32 + OFF_BM(LocalPlayerShow));
   if (!selfp) return;
@@ -1257,7 +1247,6 @@ void DrawMonster(ImDrawList *Draw) {
           OFF_BM(ListArrayOffset);
   uint stop_player =
           Read<uint>(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListCountOffset));
-  if (stop_player > 64u) stop_player = 64u;
 
   
   long monster =
@@ -1265,7 +1254,6 @@ void DrawMonster(ImDrawList *Draw) {
           OFF_BM(ListArrayOffset);
   uint stop_monster =
           Read<uint>(ReadPtr(a32 + OFF_BM(ShowMonsters)) + OFF_BM(ListCountOffset));
-  if (stop_monster > 64u) stop_monster = 64u;
   ProcessAutoRetribution(selfp, monster, stop_monster);
 
   for (int i = 0; i < stop_player; i++) {
@@ -1505,7 +1493,7 @@ void MonsterRetribution() {
   if (!a1) return;
   long a2 = ReadPtr((a1 + ((0x100 | OFF_BM(PtrChain1)) & 0xFF)));
   if (!a2) return;
-  long a32 = ReadPtr(((a2 << 1) >> 1) + OFF_BM(Instance));
+  long a32 = ReadPtr((a2 << 1) >> 1);
   if (!a32) return;
 
   Oneself = ReadPtr(a32 + OFF_BM(LocalPlayerShow));
@@ -1608,7 +1596,7 @@ void DrawMinimapESP(ImDrawList *draw) {
   long a2 = ReadPtr(a1 + OFF_BM(PtrChain1));
   if (!a2)
     return;
-  long a32 = ReadPtr(a2 + OFF_BM(Instance));
+  long a32 = ReadPtr(a2);
   if (!a32)
     return;
 
@@ -1811,9 +1799,8 @@ namespace AutoAim {
       const long playerBase =
               ReadPtr(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListDataOffset)) +
               OFF_BM(ListArrayOffset);
-      uint playerCount =
+      const uint playerCount =
               Read<uint>(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListCountOffset));
-      if (playerCount > 64u) playerCount = 64u;
       for (uint i = 0; i < playerCount && idx < maxTargets; ++i) {
         const uintptr_t objAddr = ReadPtr(playerBase + (i << 3));
         if (!objAddr)
@@ -1849,9 +1836,8 @@ namespace AutoAim {
       const long monsterBase =
               ReadPtr(ReadPtr(a32 + OFF_BM(ShowMonsters)) + OFF_BM(ListDataOffset)) +
               OFF_BM(ListArrayOffset);
-      uint monsterCount =
+      const uint monsterCount =
               Read<uint>(ReadPtr(a32 + OFF_BM(ShowMonsters)) + OFF_BM(ListCountOffset));
-      if (monsterCount > 64u) monsterCount = 64u;
       for (uint i = 0; i < monsterCount && idx < maxTargets; ++i) {
         const uintptr_t objAddr = ReadPtr(monsterBase + (i << 3));
         if (!objAddr)
@@ -2778,6 +2764,108 @@ float FloatingIcon_PosX = 0.12f;
 float FloatingIcon_PosY = 0.5f;
 bool ForceUpdateIconPos = false;
 
+static float g_UIOpacity = 1.0f;
+
+inline void ApplyModernCyberTheme() {
+  ImGuiStyle &style = ImGui::GetStyle();
+  ImGui::StyleColorsDark();
+
+  style.WindowPadding     = ImVec2(14.0f, 14.0f);
+  style.WindowRounding    = 14.0f;
+  style.WindowBorderSize  = 1.2f;
+  style.WindowTitleAlign  = ImVec2(0.5f, 0.5f);
+
+  style.ChildRounding     = 10.0f;
+  style.ChildBorderSize   = 1.0f;
+
+  style.PopupRounding     = 10.0f;
+  style.PopupBorderSize   = 1.0f;
+
+  style.FramePadding      = ImVec2(12.0f, 8.0f);
+  style.FrameRounding     = 8.0f;
+  style.FrameBorderSize   = 1.0f;
+
+  style.ItemSpacing       = ImVec2(12.0f, 10.0f);
+  style.ItemInnerSpacing  = ImVec2(8.0f, 6.0f);
+  style.IndentSpacing     = 20.0f;
+
+  style.ScrollbarSize     = 20.0f;
+  style.ScrollbarRounding = 12.0f;
+
+  style.GrabMinSize       = 22.0f;
+  style.GrabRounding      = 8.0f;
+
+  style.TabRounding       = 8.0f;
+  style.TabBorderSize     = 0.0f;
+
+  ImVec4 *colors = style.Colors;
+  colors[ImGuiCol_Text]                  = ImVec4(0.95f, 0.96f, 0.98f, 1.00f);
+  colors[ImGuiCol_TextDisabled]          = ImVec4(0.50f, 0.56f, 0.66f, 1.00f);
+  colors[ImGuiCol_WindowBg]              = ImVec4(0.043f, 0.055f, 0.078f, 0.97f);
+  colors[ImGuiCol_ChildBg]               = ImVec4(0.067f, 0.086f, 0.133f, 0.94f);
+  colors[ImGuiCol_PopupBg]               = ImVec4(0.055f, 0.070f, 0.105f, 0.98f);
+  colors[ImGuiCol_Border]                = ImVec4(0.14f, 0.20f, 0.29f, 0.85f);
+  colors[ImGuiCol_BorderShadow]          = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+
+  colors[ImGuiCol_FrameBg]               = ImVec4(0.095f, 0.125f, 0.190f, 1.00f);
+  colors[ImGuiCol_FrameBgHovered]        = ImVec4(0.130f, 0.175f, 0.260f, 1.00f);
+  colors[ImGuiCol_FrameBgActive]         = ImVec4(0.00f, 0.85f, 0.52f, 0.28f);
+
+  colors[ImGuiCol_TitleBg]               = ImVec4(0.035f, 0.045f, 0.065f, 1.00f);
+  colors[ImGuiCol_TitleBgActive]         = ImVec4(0.050f, 0.068f, 0.098f, 1.00f);
+  colors[ImGuiCol_TitleBgCollapsed]      = ImVec4(0.035f, 0.045f, 0.065f, 0.80f);
+  colors[ImGuiCol_MenuBarBg]             = ImVec4(0.055f, 0.070f, 0.100f, 1.00f);
+
+  colors[ImGuiCol_ScrollbarBg]           = ImVec4(0.04f, 0.05f, 0.07f, 0.60f);
+  colors[ImGuiCol_ScrollbarGrab]         = ImVec4(0.18f, 0.25f, 0.36f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrabHovered]  = ImVec4(0.00f, 0.82f, 0.50f, 0.80f);
+  colors[ImGuiCol_ScrollbarGrabActive]   = ImVec4(0.00f, 0.92f, 0.56f, 1.00f);
+
+  colors[ImGuiCol_CheckMark]             = ImVec4(0.00f, 0.92f, 0.56f, 1.00f);
+  colors[ImGuiCol_SliderGrab]            = ImVec4(0.00f, 0.86f, 0.52f, 1.00f);
+  colors[ImGuiCol_SliderGrabActive]      = ImVec4(0.15f, 1.00f, 0.65f, 1.00f);
+
+  colors[ImGuiCol_Button]                = ImVec4(0.10f, 0.14f, 0.21f, 1.00f);
+  colors[ImGuiCol_ButtonHovered]         = ImVec4(0.00f, 0.78f, 0.48f, 0.35f);
+  colors[ImGuiCol_ButtonActive]          = ImVec4(0.00f, 0.88f, 0.54f, 0.55f);
+
+  colors[ImGuiCol_Header]                = ImVec4(0.00f, 0.82f, 0.50f, 0.20f);
+  colors[ImGuiCol_HeaderHovered]         = ImVec4(0.00f, 0.82f, 0.50f, 0.35f);
+  colors[ImGuiCol_HeaderActive]          = ImVec4(0.00f, 0.90f, 0.55f, 0.50f);
+
+  colors[ImGuiCol_Separator]             = ImVec4(0.14f, 0.20f, 0.29f, 0.80f);
+  colors[ImGuiCol_SeparatorHovered]      = ImVec4(0.00f, 0.85f, 0.52f, 0.78f);
+  colors[ImGuiCol_SeparatorActive]       = ImVec4(0.00f, 0.95f, 0.58f, 1.00f);
+
+  colors[ImGuiCol_ResizeGrip]            = ImVec4(0.00f, 0.85f, 0.52f, 0.25f);
+  colors[ImGuiCol_ResizeGripHovered]     = ImVec4(0.00f, 0.85f, 0.52f, 0.65f);
+  colors[ImGuiCol_ResizeGripActive]      = ImVec4(0.00f, 0.95f, 0.58f, 0.95f);
+
+  colors[ImGuiCol_Tab]                   = ImVec4(0.08f, 0.11f, 0.17f, 1.00f);
+  colors[ImGuiCol_TabHovered]            = ImVec4(0.00f, 0.75f, 0.46f, 0.40f);
+  colors[ImGuiCol_TabActive]             = ImVec4(0.00f, 0.85f, 0.52f, 0.32f);
+  colors[ImGuiCol_TabUnfocused]          = ImVec4(0.06f, 0.08f, 0.12f, 1.00f);
+  colors[ImGuiCol_TabUnfocusedActive]    = ImVec4(0.09f, 0.13f, 0.19f, 1.00f);
+
+  colors[ImGuiCol_PlotLines]             = ImVec4(0.00f, 0.88f, 0.54f, 1.00f);
+  colors[ImGuiCol_PlotLinesHovered]      = ImVec4(0.25f, 1.00f, 0.70f, 1.00f);
+  colors[ImGuiCol_PlotHistogram]         = ImVec4(0.00f, 0.88f, 0.54f, 1.00f);
+  colors[ImGuiCol_PlotHistogramHovered]  = ImVec4(0.25f, 1.00f, 0.70f, 1.00f);
+
+  colors[ImGuiCol_TableHeaderBg]         = ImVec4(0.09f, 0.12f, 0.18f, 1.00f);
+  colors[ImGuiCol_TableBorderStrong]     = ImVec4(0.16f, 0.22f, 0.32f, 1.00f);
+  colors[ImGuiCol_TableBorderLight]      = ImVec4(0.12f, 0.17f, 0.25f, 0.70f);
+  colors[ImGuiCol_TableRowBg]            = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+  colors[ImGuiCol_TableRowBgAlt]         = ImVec4(1.00f, 1.00f, 1.00f, 0.03f);
+
+  colors[ImGuiCol_TextSelectedBg]        = ImVec4(0.00f, 0.85f, 0.52f, 0.30f);
+  colors[ImGuiCol_DragDropTarget]        = ImVec4(0.00f, 0.92f, 0.56f, 0.90f);
+  colors[ImGuiCol_NavHighlight]          = ImVec4(0.00f, 0.90f, 0.55f, 1.00f);
+  colors[ImGuiCol_NavWindowingHighlight] = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
+  colors[ImGuiCol_NavWindowingDimBg]     = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
+  colors[ImGuiCol_ModalWindowDimBg]      = ImVec4(0.02f, 0.03f, 0.05f, 0.65f);
+}
+
 void DrawFloatingLogo() {
   static ImTextureID logoTex = nullptr;
   if (!logoTex) {
@@ -2800,38 +2888,48 @@ void DrawFloatingLogo() {
   if (!logoTex)
     return;
 
-  
-  float iconSize = 125.0f;
+  float iconSize = 112.0f;
 
-  
   ImGui::SetNextWindowPos(
           ImVec2(abs_ScreenX * FloatingIcon_PosX, abs_ScreenY * FloatingIcon_PosY),
           ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 
-  ImGui::Begin("##FloatingLogo", nullptr,
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 6.0f));
+  ImGui::Begin(xorstr_("##FloatingLogo"), nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground |
                ImGuiWindowFlags_AlwaysAutoResize |
                ImGuiWindowFlags_NoSavedSettings |
                ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
 
-  
   ImGui::Image(logoTex, ImVec2(iconSize, iconSize));
+  ImVec2 imgMin = ImGui::GetItemRectMin();
+  ImVec2 imgMax = ImGui::GetItemRectMax();
+  ImVec2 center((imgMin.x + imgMax.x) * 0.5f, (imgMin.y + imgMax.y) * 0.5f);
+  float radius = iconSize * 0.5f;
 
-  
-  ImGui::SetCursorScreenPos(ImGui::GetItemRectMin());
-  ImGui::InvisibleButton("##LogoBtn", ImVec2(iconSize, iconSize));
+  ImDrawList *winDraw = ImGui::GetWindowDrawList();
+  ImU32 accentCol = is_attached ? IM_COL32(0, 230, 138, 220) : IM_COL32(255, 175, 45, 220);
+  ImU32 glowCol   = is_attached ? IM_COL32(0, 230, 138, 55)  : IM_COL32(255, 175, 45, 55);
 
-  
+  // Outer subtle glow + border ring + live status indicator dot
+  winDraw->AddCircle(center, radius + 3.5f, glowCol, 48, 5.0f);
+  winDraw->AddCircle(center, radius + 1.0f, accentCol, 48, 2.0f);
+
+  ImVec2 dotPos(imgMax.x - 14.0f, imgMax.y - 14.0f);
+  winDraw->AddCircleFilled(dotPos, 9.0f, IM_COL32(11, 14, 20, 240), 20);
+  winDraw->AddCircleFilled(dotPos, 6.0f, accentCol, 20);
+
+  ImGui::SetCursorScreenPos(imgMin);
+  ImGui::InvisibleButton(xorstr_("##LogoBtn"), ImVec2(iconSize, iconSize));
+
   if (ImGui::IsItemClicked()) {
     show_menu = !show_menu;
   }
 
-  
   if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
     FloatingIcon_PosX += ImGui::GetIO().MouseDelta.x / abs_ScreenX;
     FloatingIcon_PosY += ImGui::GetIO().MouseDelta.y / abs_ScreenY;
 
-    
     if (FloatingIcon_PosX < 0.05f)
       FloatingIcon_PosX = 0.05f;
     if (FloatingIcon_PosX > 0.95f)
@@ -2843,6 +2941,7 @@ void DrawFloatingLogo() {
   }
 
   ImGui::End();
+  ImGui::PopStyleVar();
 }
 #include <fstream>
 #include <sstream>
@@ -3062,297 +3161,490 @@ inline void LoadSTACOOLexSettings() {
 void Layout_tick_UI() {
   ImGuiIO &io = ImGui::GetIO();
 
-  
-  ImGuiStyle& style = ImGui::GetStyle();
-  ImGui::StyleColorsDark();
-  style.WindowPadding = ImVec2(20, 20);
-  style.WindowRounding = 12.0f;
-  style.ChildRounding = 8.0f;
-  style.FramePadding = ImVec2(12, 8);
-  style.FrameRounding = 10.0f;
-  style.ItemSpacing = ImVec2(15, 12);
-  style.ItemInnerSpacing = ImVec2(10, 8);
-  style.IndentSpacing = 25.0f;
-  style.ScrollbarSize = 25.0f;
-  style.ScrollbarRounding = 15.0f;
-  style.GrabMinSize = 20.0f;
-  style.GrabRounding = 6.0f;
-  style.TabRounding = 6.0f;
-  style.WindowTitleAlign = ImVec2(0.5f, 0.5f);
-  style.WindowBorderSize = 1.0f;
+  static bool s_ThemeInitialized = false;
+  if (!s_ThemeInitialized) {
+    ApplyModernCyberTheme();
+    s_ThemeInitialized = true;
+  }
+  ImGui::GetStyle().Alpha = g_UIOpacity;
 
+  auto BeginSectionCard = [](const char *id, const char *title, const char *badge = nullptr, float height = 0.0f) {
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.067f, 0.086f, 0.133f, 0.96f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.14f, 0.21f, 0.30f, 0.90f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 12.0f));
+    ImGui::BeginChild(id, ImVec2(0.0f, height), true);
 
-  
-  ImVec4* colors = style.Colors;
-  colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
-  colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
-  colors[ImGuiCol_WindowBg]               = ImVec4(0.06f, 0.06f, 0.06f, 0.98f);
-  colors[ImGuiCol_ChildBg]                = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-  colors[ImGuiCol_PopupBg]                = ImVec4(0.08f, 0.08f, 0.08f, 0.94f);
-  colors[ImGuiCol_Border]                 = ImVec4(0.25f, 0.25f, 0.25f, 0.50f);
-  colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-  colors[ImGuiCol_FrameBg]                = ImVec4(0.12f, 0.12f, 0.12f, 0.54f);
-  colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.18f, 0.18f, 0.18f, 0.40f);
-  colors[ImGuiCol_FrameBgActive]          = ImVec4(0.24f, 0.24f, 0.24f, 0.67f);
-  colors[ImGuiCol_TitleBg]                = ImVec4(0.04f, 0.04f, 0.04f, 1.00f);
-  colors[ImGuiCol_TitleBgActive]          = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
-  colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.00f, 0.00f, 0.00f, 0.51f);
-  colors[ImGuiCol_MenuBarBg]              = ImVec4(0.14f, 0.14f, 0.14f, 1.00f);
-  colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.02f, 0.02f, 0.02f, 0.53f);
-  colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.31f, 0.31f, 0.31f, 1.00f);
-  colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.41f, 0.41f, 0.41f, 1.00f);
-  colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.51f, 0.51f, 0.51f, 1.00f);
-  colors[ImGuiCol_CheckMark]              = ImVec4(0.80f, 0.80f, 0.80f, 1.00f);
-  colors[ImGuiCol_SliderGrab]             = ImVec4(0.40f, 0.40f, 0.40f, 1.00f);
-  colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.60f, 0.60f, 0.60f, 1.00f);
-  colors[ImGuiCol_Button]                 = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
-  colors[ImGuiCol_ButtonHovered]          = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
-  colors[ImGuiCol_ButtonActive]           = ImVec4(0.35f, 0.35f, 0.35f, 1.00f);
-  colors[ImGuiCol_Header]                 = ImVec4(0.20f, 0.20f, 0.20f, 0.31f);
-  colors[ImGuiCol_HeaderHovered]          = ImVec4(0.25f, 0.25f, 0.25f, 0.80f);
-  colors[ImGuiCol_HeaderActive]           = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
-  colors[ImGuiCol_Separator]              = colors[ImGuiCol_Border];
-  colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.30f, 0.30f, 0.30f, 0.78f);
-  colors[ImGuiCol_SeparatorActive]        = ImVec4(0.40f, 0.40f, 0.40f, 1.00f);
-  colors[ImGuiCol_ResizeGrip]             = ImVec4(0.25f, 0.25f, 0.25f, 0.25f);
-  colors[ImGuiCol_ResizeGripHovered]      = ImVec4(0.35f, 0.35f, 0.35f, 0.67f);
-  colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.45f, 0.45f, 0.45f, 0.95f);
-  colors[ImGuiCol_Tab]                    = ImVec4(0.10f, 0.10f, 0.10f, 1.00f);
-  colors[ImGuiCol_TabHovered]             = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
-  colors[ImGuiCol_TabActive]              = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
-  colors[ImGuiCol_TabUnfocused]           = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
-  colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
-  colors[ImGuiCol_PlotLines]              = ImVec4(0.61f, 0.61f, 0.61f, 1.00f);
-  colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00f, 0.43f, 0.35f, 1.00f);
-  colors[ImGuiCol_PlotHistogram]          = ImVec4(0.90f, 0.70f, 0.00f, 1.00f);
-  colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00f, 0.60f, 0.00f, 1.00f);
-  colors[ImGuiCol_TableHeaderBg]          = ImVec4(0.19f, 0.19f, 0.20f, 1.00f);
-  colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.31f, 0.31f, 0.35f, 1.00f);
-  colors[ImGuiCol_TableBorderLight]       = ImVec4(0.23f, 0.23f, 0.25f, 1.00f);
-  colors[ImGuiCol_TableRowBg]             = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-  colors[ImGuiCol_TableRowBgAlt]          = ImVec4(1.00f, 1.00f, 1.00f, 0.06f);
-  colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.35f, 0.35f, 0.35f, 0.35f);
-  colors[ImGuiCol_DragDropTarget]         = ImVec4(1.00f, 1.00f, 0.00f, 0.90f);
-  colors[ImGuiCol_NavHighlight]           = ImVec4(0.45f, 0.45f, 0.45f, 1.00f);
-  colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
-  colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
-  colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    dl->AddRectFilled(ImVec2(p.x - 4.0f, p.y + 1.0f), ImVec2(p.x, p.y + 17.0f), IM_COL32(0, 230, 138, 255), 2.0f);
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 6.0f);
+    ImGui::TextColored(ImVec4(0.95f, 0.97f, 1.00f, 1.00f), xorstr_("%s"), title);
+
+    if (badge && badge[0] != '\0') {
+      ImVec2 bSize = ImGui::CalcTextSize(badge);
+      float rightX = ImGui::GetWindowContentRegionMax().x - bSize.x - 10.0f;
+      if (rightX > ImGui::GetCursorPosX() + 20.0f) {
+        ImGui::SameLine(rightX);
+        ImVec2 bp = ImGui::GetCursorScreenPos();
+        dl->AddRectFilled(ImVec2(bp.x - 6.0f, bp.y - 2.0f),
+                          ImVec2(bp.x + bSize.x + 6.0f, bp.y + bSize.y + 2.0f),
+                          IM_COL32(0, 230, 138, 28), 6.0f);
+        ImGui::TextColored(ImVec4(0.00f, 0.92f, 0.56f, 1.00f), xorstr_("%s"), badge);
+      }
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+  };
+
+  auto EndSectionCard = []() {
+    ImGui::EndChild();
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(2);
+    ImGui::Spacing();
+  };
 
   if (is_root_mode) {
     DrawFloatingLogo();
     if (show_menu) {
-        ImGui::SetNextWindowSize(ImVec2(900, 700), ImGuiCond_FirstUseEver);
-        if (ImGui::Begin(xorstr_("KERNEL-Syscall-MLBB-YOURNAME"), &show_menu)) {
-          if (ImGui::BeginTabBar(xorstr_("##MainTabs"))) {
-            if (ImGui::BeginTabItem(xorstr_("INFO"))) {
-              ImGui::BeginChild(xorstr_("##InfoBox"), ImVec2(0, 0), false);
+      ImGui::SetNextWindowSize(ImVec2(940.0f, 680.0f), ImGuiCond_FirstUseEver);
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 14.0f));
 
-              
-              ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
-              ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(xorstr_("--- PREMIUM SUBSCRIPTION ---")).x) * 0.5f);
-              ImGui::Text(xorstr_("--- PREMIUM SUBSCRIPTION ---"));
-              ImGui::PopStyleColor();
-              ImGui::Separator();
-              ImGui::Spacing();
+      if (ImGui::Begin(xorstr_("KERNEL-Syscall-MLBB-YOURNAME"), &show_menu,
+                       ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse)) {
+        ImDrawList *winDraw = ImGui::GetWindowDrawList();
+        const float availW = ImGui::GetContentRegionAvail().x;
 
-              auto InfoRow = [](const char* label, const char* val, ImVec4 col = ImVec4(1,1,1,1)) {
-                  ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), xorstr_("%s"), label);
-                  ImGui::SameLine(160);
-                  ImGui::TextColored(col, xorstr_(": %s"), val);
-                  ImGui::Spacing();
-              };
+        // ==================== TOP HEADER BAR ====================
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.058f, 0.075f, 0.115f, 0.98f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+        ImGui::BeginChild(xorstr_("##TopHeaderBar"), ImVec2(availW, 54.0f), true,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
+        ImVec2 hPos = ImGui::GetCursorScreenPos();
+        // Brand accent pill
+        const char *brandTag = xorstr_("KERNEL SYSCALL");
+        ImVec2 tagSz = ImGui::CalcTextSize(brandTag);
+        winDraw->AddRectFilled(ImVec2(hPos.x, hPos.y + 2.0f),
+                               ImVec2(hPos.x + tagSz.x + 14.0f, hPos.y + tagSz.y + 8.0f),
+                               IM_COL32(0, 230, 138, 35), 6.0f);
+        winDraw->AddRect(ImVec2(hPos.x, hPos.y + 2.0f),
+                         ImVec2(hPos.x + tagSz.x + 14.0f, hPos.y + tagSz.y + 8.0f),
+                         IM_COL32(0, 230, 138, 160), 6.0f);
+        ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + 7.0f, ImGui::GetCursorPosY() + 4.0f));
+        ImGui::TextColored(ImVec4(0.00f, 0.95f, 0.58f, 1.00f), xorstr_("%s"), brandTag);
 
-              
-              ImGui::Spacing();
-              ImGui::Separator();
-              ImGui::Spacing();
+        ImGui::SameLine(0.0f, 14.0f);
+        ImGui::TextColored(ImVec4(0.96f, 0.98f, 1.00f, 1.00f), xorstr_("MLBB EXTERNAL"));
+        ImGui::SameLine(0.0f, 8.0f);
+        ImGui::TextColored(ImVec4(0.48f, 0.55f, 0.66f, 1.00f), xorstr_("• @YOURNAME"));
 
-              
-              ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
-              ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(xorstr_("--- DEVICE INFORMATION ---")).x) * 0.5f);
-              ImGui::Text(xorstr_("--- DEVICE INFORMATION ---"));
-              ImGui::PopStyleColor();
-              ImGui::Spacing();
+        // Right side status pill + Minimize button
+        const char *statusText = is_attached ? xorstr_("ATTACHED") : xorstr_("WAITING GAME");
+        ImVec2 stSize = ImGui::CalcTextSize(statusText);
+        float hideBtnW = 78.0f;
+        float pillW = stSize.x + 28.0f;
+        float rightStart = ImGui::GetWindowContentRegionMax().x - hideBtnW - pillW - 14.0f;
 
-              char model[PROP_VALUE_MAX] = {0};
-              __system_property_get(xorstr_("ro.product.model"), model);
-              InfoRow(xorstr_("Model"), model);
+        if (rightStart > ImGui::GetCursorPosX() + 10.0f) {
+          ImGui::SameLine(rightStart);
+          ImVec2 sp = ImGui::GetCursorScreenPos();
+          ImU32 pillBg  = is_attached ? IM_COL32(0, 230, 138, 28)  : IM_COL32(255, 175, 45, 28);
+          ImU32 pillDot = is_attached ? IM_COL32(0, 230, 138, 255) : IM_COL32(255, 175, 45, 255);
+          ImVec4 txtCol = is_attached ? ImVec4(0.00f, 0.95f, 0.58f, 1.00f) : ImVec4(1.00f, 0.72f, 0.22f, 1.00f);
 
-              InfoRow(xorstr_("Package"), g_package_name.c_str());
-              InfoRow(xorstr_("Injection"), is_attached ? xorstr_("Active") : xorstr_("Pending"),
-                      is_attached ? ImVec4(0,1,0,1) : ImVec4(1,0,0,1));
+          winDraw->AddRectFilled(ImVec2(sp.x, sp.y - 2.0f),
+                                 ImVec2(sp.x + pillW, sp.y + stSize.y + 4.0f),
+                                 pillBg, 12.0f);
+          winDraw->AddCircleFilled(ImVec2(sp.x + 11.0f, sp.y + stSize.y * 0.5f + 1.0f), 4.0f, pillDot, 16);
+          ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0f);
+          ImGui::TextColored(txtCol, xorstr_("%s"), statusText);
 
-              ImGui::Spacing();
-              ImGui::Separator();
-
-              
-              ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 45);
-              float creditWidth = ImGui::CalcTextSize(xorstr_("Copyright (c) 2026 @YOURNAME ")).x;
-              ImGui::SetCursorPosX((ImGui::GetWindowWidth() - creditWidth) * 0.5f);
-              ImGui::TextDisabled(xorstr_("Copyright (c) 2026 @YOURNAME "));
-
-              ImGui::EndChild();
-              ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem(xorstr_("ROOM"))) {
-              RenderRoomPlayerInfoImGui();
-              ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem(xorstr_("ESP"))) {
-              if (ImGui::CollapsingHeader(xorstr_("PLAYER ESP"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("ESP Line"), &drawMLine);
-                ImGui::CustomCheckbox(xorstr_("Hero ESP"), &iconhero);
-                if (iconhero || ESP_Player_Cooldown) {
-                  ImGui::SliderFloat(xorstr_("ESP Height"), &Avatar_OffsetY, 0.0f, 500.0f);
-                  ImGui::SliderFloat(xorstr_("Icon Size"), &g_HeroIconSize, 10.0f, 60.0f);
-                }
-                ImGui::CustomCheckbox(xorstr_("Prediction ESP"), &drawMPrediction);
-              }
-              if (ImGui::CollapsingHeader(xorstr_("COOLDOWN & DRONE"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("Enemy Cooldown"), &ESP_Player_Cooldown);
-                if (ESP_Player_Cooldown) {
-                  ImGui::SliderFloat(xorstr_("CD Size"), &Cooldown_Size, 5.0f, 40.0f);
-                }
-                ImGui::Separator();
-                ImGui::CustomCheckbox(xorstr_("Enable Drone"), &EnableDrone);
-                if (EnableDrone) ImGui::SliderFloat(xorstr_("FOV"), &FieldView, -9.0f, -1.0f);
-              }
-              ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem(xorstr_("VISUAL"))) {
-              if (ImGui::CollapsingHeader(xorstr_("MONSTERS"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("Monster ESP"), &drawMonsterName);
-                if (drawMonsterName) {
-                  ImGui::SliderFloat(xorstr_("Monster Icon Size"), &g_MonsterIconSize, 10.0f, 60.0f);
-                }
-              }
-              if (ImGui::CollapsingHeader(xorstr_("MINIMAP"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("Enable Minimap"), &MinimapIcon);
-                ImGui::CustomCheckbox(xorstr_("Hide Minimap Line"), &HideLine);
-                ImGui::CustomCheckbox(xorstr_("Show All Monsters"), &MinimapIconBuff);
-                ImGui::CustomCheckbox(xorstr_("Show Minion Dot"), &drawMinionMinimap);
-                ImGui::SliderInt(xorstr_("Minimap Size"), &MinimapSize, 100, 600);
-                ImGui::SliderInt(xorstr_("Minimap X"), &MinimapPos, 0, 1000);
-                ImGui::SliderInt(xorstr_("Minimap Y"), &MinimapPosY, 0, 1000);
-                ImGui::SliderInt(xorstr_("Hero Icon Size"), &g_MinimapHeroSize, 10, 100);
-                ImGui::SliderInt(xorstr_("Monster Icon Size"), &g_MinimapMonsterSize, 10, 100);
-                ImGui::SliderInt(xorstr_("Minion Dot Size"), &g_ICSize, 2, 20); 
-                if (ImGui::TreeNode(xorstr_("Calibration"))) {
-                  ImGui::SliderFloat(xorstr_("Scale"), &g_MinimapScale, 10.0f, 200.0f);
-                  ImGui::SliderFloat(xorstr_("Offset X"), &g_Res1_OffsetX, -100.0f, 100.0f);
-                  ImGui::SliderFloat(xorstr_("Offset Y"), &g_Res1_OffsetY, -100.0f, 100.0f);
-                  ImGui::TreePop();
-                }
-              }
-              if (ImGui::CollapsingHeader(xorstr_("ALERT WARNING"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("Show Alert"), &drawAlertUnderAttack);
-                ImGui::CustomCheckbox(xorstr_("Show Alert HP"), &Alert_ShowHPText);
-                ImGui::SliderFloat(xorstr_("Alert X (%)"), &Alert_PosX, 0.0f, 1.0f);
-                ImGui::SliderFloat(xorstr_("Alert Y (%)"), &Alert_PosY, 0.0f, 1.0f);
-                ImGui::SliderFloat(xorstr_("Alert Scale"), &Alert_Scale, 0.5f, 3.0f);
-              }
-              ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem(xorstr_("RETRI"))) {
-              if (ImGui::CollapsingHeader(xorstr_("AUTO RETRI"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("Enable Auto Retri"), &autoRetribution);
-                ImGui::CustomCheckbox(xorstr_("Show Circle"), &showRetriCircle);
-                ImGui::SliderFloat(xorstr_("Retri X"), &retriTouchX, 0.0f, 3000.0f);
-                ImGui::SliderFloat(xorstr_("Retri Y"), &retriTouchY, 0.0f, 1500.0f);
-              }
-              if (ImGui::CollapsingHeader(xorstr_("TARGETS"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("Buff Red"), &AutoRetributionRed);
-                ImGui::CustomCheckbox(xorstr_("Buff Blue"), &AutoRetributionBlue);
-                ImGui::CustomCheckbox(xorstr_("Lord"), &AutoRetributionLord);
-                ImGui::CustomCheckbox(xorstr_("Turtle"), &AutoRetributionTurtle);
-                ImGui::CustomCheckbox(xorstr_("Crab"), &AutoRetributionCrab);
-                ImGui::CustomCheckbox(xorstr_("Lito"), &AutoRetributionLito);
-              }
-              ImGui::EndTabItem();
-            }
-            if (ImGui::BeginTabItem(xorstr_("SKILL"))) {
-              if (ImGui::CollapsingHeader(xorstr_("LING AUTO SWORD"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("Enable Auto Sword"), &autoSwordLing);
-                
-                if (autoSwordLing ) {
-                  
-                  ImGui::SliderFloat(xorstr_("Dash Range"), &lingSwordDashRange, 1.0f, 20.0f);
-                  ImGui::SliderFloat(xorstr_("Dash Delay"), &lingDashDelay, -0.1f, 1.0f);
-                  ImGui::SliderFloat(xorstr_("Skill 2 X"), &lingSkill2X, 0.0f, (float)abs_ScreenX);
-                  ImGui::SliderFloat(xorstr_("Skill 2 Y"), &lingSkill2Y, 0.0f, (float)abs_ScreenY);
-
-                  if (ImGui::Button(xorstr_("Reset Skill 2 Pos"), ImVec2(-1, 0))) {
-                    lingSkill2X = abs_ScreenX * 0.85f;
-                    lingSkill2Y = abs_ScreenY * 0.75f;
-                  }
-                }
-              }
-              if (ImGui::CollapsingHeader(xorstr_("GUSION AUTO COMBO"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("Enable Auto Combo"), &autoComboGusion);
-                if (autoComboGusion) {
-                  ImGui::TextDisabled(xorstr_("Combo: 1-2-1-2-3 (Auto Reset)"));
-                  ImGui::SliderInt(xorstr_("Combo Speed (ms)"), &gusionComboDelay, 10, 500);
-
-                  ImGui::SliderFloat(xorstr_("Skill 2 X"), &gusionSkill2X, 0.0f, (float)abs_ScreenX);
-                  ImGui::SliderFloat(xorstr_("Skill 2 Y"), &gusionSkill2Y, 0.0f, (float)abs_ScreenY);
-                  ImGui::SliderFloat(xorstr_("Skill 3 X"), &gusionSkill3X, 0.0f, (float)abs_ScreenX);
-                  ImGui::SliderFloat(xorstr_("Skill 3 Y"), &gusionSkill3Y, 0.0f, (float)abs_ScreenY);
-
-                  if (ImGui::Button(xorstr_("Reset Gusion Buttons"), ImVec2(-1, 0))) {
-                    gusionSkill1X = abs_ScreenX * 0.85f; gusionSkill1Y = abs_ScreenY * 0.75f;
-                    gusionSkill2X = abs_ScreenX * 0.75f; gusionSkill2Y = abs_ScreenY * 0.85f;
-                    gusionSkill3X = abs_ScreenX * 0.70f; gusionSkill3Y = abs_ScreenY * 0.65f;
-                  }
-                }
-              }
-              if (ImGui::CollapsingHeader(xorstr_("DD KIMMY AUTO AIM"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::CustomCheckbox(xorstr_("Enable Kimmy Aim"), &AutoAim::enabled);
-                if (AutoAim::enabled) {
-                  ImGui::SliderFloat(xorstr_("FOV Radius"), &AutoAim::fovRadius, 50.0f, 1500.0f);
-                  ImGui::SliderFloat(xorstr_("Smooth Factor"), &AutoAim::smoothFactor, 0.01f, 0.5f);
-                  const char* priorities[] = { "Closest", "Lowest HP", "Player Priority" };
-                  ImGui::Combo(xorstr_("Target Priority"), &AutoAim::priorityMode, priorities, 3);
-                  ImGui::CustomCheckbox(xorstr_("Show Visuals"), &AutoAim::showVisuals);
-                }
-                ImGui::Separator();
-                ImGui::CustomCheckbox(xorstr_("Show Joystick UI"), &AutoAim::joyVisible);
-                if (AutoAim::joyVisible || AutoAim::enabled) {
-                  ImGui::SliderFloat(xorstr_("Joy Radius"), &AutoAim::joyRadius, 100.0f, 300.0f);
-                  ImGui::SliderFloat(xorstr_("Joy X"), &AutoAim::joyCenterX, 0.0f, (float)abs_ScreenX);
-                  ImGui::SliderFloat(xorstr_("Joy Y"), &AutoAim::joyCenterY, 0.0f, (float)abs_ScreenY);
-                  if (ImGui::Button(xorstr_("Reset to Right"), ImVec2(-1, 0))) {
-                    AutoAim::joyCenterX = abs_ScreenX * 0.85f;
-                    AutoAim::joyCenterY = abs_ScreenY * 0.75f;
-                  }
-                }
-              }
-              ImGui::EndTabItem();
-            }
-
-            if (ImGui::BeginTabItem(xorstr_("SETTINGS"))) {
-              if (ImGui::CollapsingHeader(xorstr_("CONFIG"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                if (ImGui::Button(xorstr_("RE-SCAN GAME"), ImVec2(-1, 0))) AttachToGame();
-                ImGui::Text(xorstr_("Status: %s"), is_attached ? xorstr_("READY (Auto-Attached)") : xorstr_("SEARCHING GAME..."));
-                ImGui::Spacing();
-                if (ImGui::Button(xorstr_("SAVE SETTINGS"), ImVec2(-1, 0))) SaveSTACOOLexSettings();
-                if (ImGui::Button(xorstr_("LOAD SETTINGS"), ImVec2(-1, 0))) LoadSTACOOLexSettings();
-              }
-              if (ImGui::CollapsingHeader(xorstr_("SYSTEM"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                static float opacity = 1.0f;
-                if (ImGui::SliderFloat(xorstr_("UI Opacity"), &opacity, 0.1f, 1.0f)) {
-                  ImGui::GetStyle().Alpha = opacity;
-                }
-                if (ImGui::Button(xorstr_("EXIT"), ImVec2(-1, 0))) {
-                  main_thread_flag.store(false);
-                }
-              }
-              ImGui::EndTabItem();
-            }
-            ImGui::EndTabBar();
+          ImGui::SameLine(0.0f, 12.0f);
+          ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3.0f);
+          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.14f, 0.18f, 0.26f, 1.00f));
+          ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.22f, 0.28f, 0.85f));
+          if (ImGui::Button(xorstr_("HIDE"), ImVec2(hideBtnW, 28.0f))) {
+            show_menu = false;
           }
-          ImGui::End();
+          ImGui::PopStyleColor(2);
         }
+
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
+
+        ImGui::Spacing();
+
+        // ==================== BODY: LEFT SIDEBAR + RIGHT CONTENT ====================
+        static int activeTab = 0;
+        const char *navLabels[] = {
+            xorstr_("INFO"),
+            xorstr_("ROOM"),
+            xorstr_("ESP"),
+            xorstr_("VISUAL"),
+            xorstr_("RETRI"),
+            xorstr_("SKILL"),
+            xorstr_("SETTINGS")
+        };
+        const char *navSubtitles[] = {
+            xorstr_("Status & Device"),
+            xorstr_("Match Lobby"),
+            xorstr_("Player & Drone"),
+            xorstr_("Radar & Alert"),
+            xorstr_("Auto Smite"),
+            xorstr_("Hero Macro"),
+            xorstr_("Config & System")
+        };
+        constexpr int TAB_COUNT = 7;
+
+        float bodyH = ImGui::GetContentRegionAvail().y;
+        float sidebarW = 172.0f;
+
+        // --- LEFT NAVIGATION SIDEBAR ---
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.055f, 0.072f, 0.110f, 0.96f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 12.0f));
+        ImGui::BeginChild(xorstr_("##SidebarNav"), ImVec2(sidebarW, bodyH), true);
+
+        for (int i = 0; i < TAB_COUNT; ++i) {
+          bool isSelected = (activeTab == i);
+          ImVec2 btnPos = ImGui::GetCursorScreenPos();
+          float btnW = ImGui::GetContentRegionAvail().x;
+          float btnH = 48.0f;
+
+          ImGui::PushID(i);
+          if (ImGui::InvisibleButton(xorstr_("##NavBtn"), ImVec2(btnW, btnH))) {
+            activeTab = i;
+          }
+          bool isHovered = ImGui::IsItemHovered();
+          ImGui::PopID();
+
+          ImDrawList *navDraw = ImGui::GetWindowDrawList();
+          ImU32 cardFill = isSelected
+                             ? IM_COL32(0, 230, 138, 34)
+                             : (isHovered ? IM_COL32(255, 255, 255, 14) : IM_COL32(18, 24, 36, 180));
+          ImU32 borderCol = isSelected
+                              ? IM_COL32(0, 230, 138, 170)
+                              : IM_COL32(34, 46, 66, 130);
+
+          navDraw->AddRectFilled(btnPos, ImVec2(btnPos.x + btnW, btnPos.y + btnH), cardFill, 8.0f);
+          navDraw->AddRect(btnPos, ImVec2(btnPos.x + btnW, btnPos.y + btnH), borderCol, 8.0f, 0, 1.0f);
+
+          if (isSelected) {
+            navDraw->AddRectFilled(ImVec2(btnPos.x + 2.0f, btnPos.y + 8.0f),
+                                   ImVec2(btnPos.x + 6.0f, btnPos.y + btnH - 8.0f),
+                                   IM_COL32(0, 230, 138, 255), 2.0f);
+          }
+
+          ImU32 mainTxtCol = isSelected ? IM_COL32(0, 240, 145, 255) : IM_COL32(232, 238, 248, 255);
+          ImU32 subTxtCol  = isSelected ? IM_COL32(180, 235, 210, 220) : IM_COL32(125, 140, 165, 220);
+
+          navDraw->AddText(ImVec2(btnPos.x + 14.0f, btnPos.y + 8.0f), mainTxtCol, navLabels[i]);
+          navDraw->AddText(ImVec2(btnPos.x + 14.0f, btnPos.y + 26.0f), subTxtCol, navSubtitles[i]);
+
+          ImGui::Dummy(ImVec2(0.0f, 2.0f));
+        }
+
+        // Bottom sidebar footer badge
+        float remY = ImGui::GetContentRegionAvail().y;
+        if (remY > 36.0f) {
+          ImGui::SetCursorPosY(ImGui::GetCursorPosY() + remY - 32.0f);
+          ImGui::Separator();
+          ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 18.0f);
+          ImGui::TextDisabled(xorstr_("v2.0 • 2026"));
+        }
+
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor();
+
+        ImGui::SameLine(0.0f, 12.0f);
+
+        // --- RIGHT MAIN CONTENT PANEL ---
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.048f, 0.062f, 0.092f, 0.92f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 14.0f));
+        ImGui::BeginChild(xorstr_("##MainContentArea"), ImVec2(0.0f, bodyH), true);
+
+        // ==================== TAB 0: INFO ====================
+        if (activeTab == 0) {
+          BeginSectionCard(xorstr_("##SubCard"), xorstr_("PREMIUM SUBSCRIPTION"), xorstr_("ACTIVE"), 135.0f);
+          auto InfoRow = [](const char *label, const char *val, ImVec4 col = ImVec4(0.95f, 0.97f, 1.0f, 1.0f)) {
+            ImGui::TextColored(ImVec4(0.55f, 0.62f, 0.73f, 1.0f), xorstr_("%s"), label);
+            ImGui::SameLine(175.0f);
+            ImGui::TextColored(col, xorstr_(":  %s"), val);
+            ImGui::Spacing();
+          };
+          InfoRow(xorstr_("License Tier"), xorstr_("VIP Kernel Edition"), ImVec4(0.00f, 0.92f, 0.56f, 1.0f));
+          InfoRow(xorstr_("Engine Mode"), xorstr_("External Overlay (Root/Syscall)"), ImVec4(0.85f, 0.92f, 1.0f, 1.0f));
+          EndSectionCard();
+
+          BeginSectionCard(xorstr_("##DevCard"), xorstr_("DEVICE INFORMATION"),
+                           is_attached ? xorstr_("READY") : xorstr_("PENDING"), 175.0f);
+          char model[PROP_VALUE_MAX] = {0};
+          __system_property_get(xorstr_("ro.product.model"), model);
+          InfoRow(xorstr_("Model"), model[0] ? model : xorstr_("Android Device"));
+          InfoRow(xorstr_("Package"), g_package_name.c_str(), ImVec4(0.45f, 0.80f, 1.00f, 1.0f));
+          InfoRow(xorstr_("Injection"),
+                  is_attached ? xorstr_("Active") : xorstr_("Pending"),
+                  is_attached ? ImVec4(0.00f, 0.95f, 0.58f, 1.0f) : ImVec4(1.00f, 0.42f, 0.42f, 1.0f));
+          EndSectionCard();
+
+          if (g_LoginServerCache.IsValid || g_LoginServerCache.AccountId > 0) {
+            BeginSectionCard(xorstr_("##AccCard"), xorstr_("SESSION OVERVIEW"), xorstr_("LIVE"), 170.0f);
+            InfoRow(xorstr_("Nickname"),
+                    g_LoginServerCache.Nickname.empty() ? xorstr_("-") : g_LoginServerCache.Nickname.c_str());
+            char uidBuf[32];
+            snprintf(uidBuf, sizeof(uidBuf), xorstr_("%llu"),
+                     (unsigned long long)g_LoginServerCache.AccountId);
+            InfoRow(xorstr_("Account ID"), uidBuf, ImVec4(1.00f, 0.80f, 0.30f, 1.0f));
+            InfoRow(xorstr_("Client Ver"),
+                    g_LoginServerCache.ClientRealVersion.empty() ? xorstr_("-") : g_LoginServerCache.ClientRealVersion.c_str());
+            EndSectionCard();
+          }
+
+          ImGui::Spacing();
+          float creditWidth = ImGui::CalcTextSize(xorstr_("Copyright (c) 2026 @YOURNAME")).x;
+          ImGui::SetCursorPosX((ImGui::GetWindowWidth() - creditWidth) * 0.5f);
+          ImGui::TextDisabled(xorstr_("Copyright (c) 2026 @YOURNAME"));
+        }
+
+        // ==================== TAB 1: ROOM ====================
+        else if (activeTab == 1) {
+          BeginSectionCard(xorstr_("##RoomCard"), xorstr_("ROOM & PLAYER INTEL"), xorstr_("REALTIME"));
+          RenderRoomPlayerInfoImGui();
+          EndSectionCard();
+        }
+
+        // ==================== TAB 2: ESP ====================
+        else if (activeTab == 2) {
+          BeginSectionCard(xorstr_("##PlayerEspCard"), xorstr_("PLAYER ESP"), xorstr_("VISUALS"),
+                           (iconhero || ESP_Player_Cooldown) ? 235.0f : 165.0f);
+          ImGui::CustomCheckbox(xorstr_("ESP Line"), &drawMLine);
+          ImGui::CustomCheckbox(xorstr_("Hero ESP"), &iconhero);
+          if (iconhero || ESP_Player_Cooldown) {
+            ImGui::Spacing();
+            ImGui::SliderFloat(xorstr_("ESP Height"), &Avatar_OffsetY, 0.0f, 500.0f);
+            ImGui::SliderFloat(xorstr_("Icon Size"), &g_HeroIconSize, 10.0f, 60.0f);
+          }
+          ImGui::CustomCheckbox(xorstr_("Prediction ESP"), &drawMPrediction);
+          EndSectionCard();
+
+          BeginSectionCard(xorstr_("##CdDroneCard"), xorstr_("COOLDOWN & DRONE"), xorstr_("TACTICAL"),
+                           (ESP_Player_Cooldown || EnableDrone) ? 235.0f : 165.0f);
+          ImGui::CustomCheckbox(xorstr_("Enemy Cooldown"), &ESP_Player_Cooldown);
+          if (ESP_Player_Cooldown) {
+            ImGui::SliderFloat(xorstr_("CD Size"), &Cooldown_Size, 5.0f, 40.0f);
+          }
+          ImGui::Spacing();
+          ImGui::Separator();
+          ImGui::Spacing();
+          ImGui::CustomCheckbox(xorstr_("Enable Drone"), &EnableDrone);
+          if (EnableDrone) {
+            ImGui::SliderFloat(xorstr_("FOV"), &FieldView, -9.0f, -1.0f);
+          }
+          EndSectionCard();
+        }
+
+        // ==================== TAB 3: VISUAL ====================
+        else if (activeTab == 3) {
+          BeginSectionCard(xorstr_("##MonstersCard"), xorstr_("MONSTERS"), xorstr_("JUNGLE"),
+                           drawMonsterName ? 135.0f : 95.0f);
+          ImGui::CustomCheckbox(xorstr_("Monster ESP"), &drawMonsterName);
+          if (drawMonsterName) {
+            ImGui::SliderFloat(xorstr_("Monster Icon Size"), &g_MonsterIconSize, 10.0f, 60.0f);
+          }
+          EndSectionCard();
+
+          BeginSectionCard(xorstr_("##MinimapCard"), xorstr_("MINIMAP"), xorstr_("RADAR"), 455.0f);
+          if (ImGui::BeginTable(xorstr_("##MinimapChecks"), 2)) {
+            ImGui::TableNextColumn();
+            ImGui::CustomCheckbox(xorstr_("Enable Minimap"), &MinimapIcon);
+            ImGui::CustomCheckbox(xorstr_("Show All Monsters"), &MinimapIconBuff);
+            ImGui::TableNextColumn();
+            ImGui::CustomCheckbox(xorstr_("Hide Minimap Line"), &HideLine);
+            ImGui::CustomCheckbox(xorstr_("Show Minion Dot"), &drawMinionMinimap);
+            ImGui::EndTable();
+          }
+          ImGui::Spacing();
+          ImGui::SliderInt(xorstr_("Minimap Size"), &MinimapSize, 100, 600);
+          ImGui::SliderInt(xorstr_("Minimap X"), &MinimapPos, 0, 1000);
+          ImGui::SliderInt(xorstr_("Minimap Y"), &MinimapPosY, 0, 1000);
+          ImGui::SliderInt(xorstr_("Hero Icon Size"), &g_MinimapHeroSize, 10, 100);
+          ImGui::SliderInt(xorstr_("Monster Icon Size"), &g_MinimapMonsterSize, 10, 100);
+          ImGui::SliderInt(xorstr_("Minion Dot Size"), &g_ICSize, 2, 20);
+          if (ImGui::TreeNode(xorstr_("Calibration"))) {
+            ImGui::SliderFloat(xorstr_("Scale"), &g_MinimapScale, 10.0f, 200.0f);
+            ImGui::SliderFloat(xorstr_("Offset X"), &g_Res1_OffsetX, -100.0f, 100.0f);
+            ImGui::SliderFloat(xorstr_("Offset Y"), &g_Res1_OffsetY, -100.0f, 100.0f);
+            ImGui::TreePop();
+          }
+          EndSectionCard();
+
+          BeginSectionCard(xorstr_("##AlertCard"), xorstr_("ALERT WARNING"), xorstr_("OBJECTIVE"), 245.0f);
+          if (ImGui::BeginTable(xorstr_("##AlertChecks"), 2)) {
+            ImGui::TableNextColumn();
+            ImGui::CustomCheckbox(xorstr_("Show Alert"), &drawAlertUnderAttack);
+            ImGui::TableNextColumn();
+            ImGui::CustomCheckbox(xorstr_("Show Alert HP"), &Alert_ShowHPText);
+            ImGui::EndTable();
+          }
+          ImGui::SliderFloat(xorstr_("Alert X (%)"), &Alert_PosX, 0.0f, 1.0f);
+          ImGui::SliderFloat(xorstr_("Alert Y (%)"), &Alert_PosY, 0.0f, 1.0f);
+          ImGui::SliderFloat(xorstr_("Alert Scale"), &Alert_Scale, 0.5f, 3.0f);
+          EndSectionCard();
+        }
+
+        // ==================== TAB 4: RETRI ====================
+        else if (activeTab == 4) {
+          BeginSectionCard(xorstr_("##AutoRetriCard"), xorstr_("AUTO RETRI"),
+                           autoRetribution ? xorstr_("ENABLED") : xorstr_("OFF"), 215.0f);
+          if (ImGui::BeginTable(xorstr_("##RetriMainChecks"), 2)) {
+            ImGui::TableNextColumn();
+            ImGui::CustomCheckbox(xorstr_("Enable Auto Retri"), &autoRetribution);
+            ImGui::TableNextColumn();
+            ImGui::CustomCheckbox(xorstr_("Show Circle"), &showRetriCircle);
+            ImGui::EndTable();
+          }
+          ImGui::Spacing();
+          ImGui::SliderFloat(xorstr_("Retri X"), &retriTouchX, 0.0f, 3000.0f);
+          ImGui::SliderFloat(xorstr_("Retri Y"), &retriTouchY, 0.0f, 1500.0f);
+          EndSectionCard();
+
+          BeginSectionCard(xorstr_("##RetriTargetsCard"), xorstr_("TARGETS"), xorstr_("PRIORITY"), 185.0f);
+          if (ImGui::BeginTable(xorstr_("##RetriTargetGrid"), 2)) {
+            ImGui::TableNextColumn();
+            ImGui::CustomCheckbox(xorstr_("Buff Red"), &AutoRetributionRed);
+            ImGui::CustomCheckbox(xorstr_("Lord"), &AutoRetributionLord);
+            ImGui::CustomCheckbox(xorstr_("Crab"), &AutoRetributionCrab);
+            ImGui::TableNextColumn();
+            ImGui::CustomCheckbox(xorstr_("Buff Blue"), &AutoRetributionBlue);
+            ImGui::CustomCheckbox(xorstr_("Turtle"), &AutoRetributionTurtle);
+            ImGui::CustomCheckbox(xorstr_("Lito"), &AutoRetributionLito);
+            ImGui::EndTable();
+          }
+          EndSectionCard();
+        }
+
+        // ==================== TAB 5: SKILL ====================
+        else if (activeTab == 5) {
+          BeginSectionCard(xorstr_("##LingCard"), xorstr_("LING AUTO SWORD"),
+                           autoSwordLing ? xorstr_("ON") : xorstr_("OFF"),
+                           autoSwordLing ? 275.0f : 95.0f);
+          ImGui::CustomCheckbox(xorstr_("Enable Auto Sword"), &autoSwordLing);
+          if (autoSwordLing) {
+            ImGui::Spacing();
+            ImGui::SliderFloat(xorstr_("Dash Range"), &lingSwordDashRange, 1.0f, 20.0f);
+            ImGui::SliderFloat(xorstr_("Dash Delay"), &lingDashDelay, -0.1f, 1.0f);
+            ImGui::SliderFloat(xorstr_("Skill 2 X"), &lingSkill2X, 0.0f, (float)abs_ScreenX);
+            ImGui::SliderFloat(xorstr_("Skill 2 Y"), &lingSkill2Y, 0.0f, (float)abs_ScreenY);
+            if (ImGui::Button(xorstr_("Reset Skill 2 Pos"), ImVec2(-1.0f, 36.0f))) {
+              lingSkill2X = abs_ScreenX * 0.85f;
+              lingSkill2Y = abs_ScreenY * 0.75f;
+            }
+          }
+          EndSectionCard();
+
+          BeginSectionCard(xorstr_("##GusionCard"), xorstr_("GUSION AUTO COMBO"),
+                           autoComboGusion ? xorstr_("ON") : xorstr_("OFF"),
+                           autoComboGusion ? 325.0f : 95.0f);
+          ImGui::CustomCheckbox(xorstr_("Enable Auto Combo"), &autoComboGusion);
+          if (autoComboGusion) {
+            ImGui::TextColored(ImVec4(0.00f, 0.90f, 0.55f, 1.0f), xorstr_("Combo: 1-2-1-2-3 (Auto Reset)"));
+            ImGui::SliderInt(xorstr_("Combo Speed (ms)"), &gusionComboDelay, 10, 500);
+            ImGui::SliderFloat(xorstr_("Skill 2 X"), &gusionSkill2X, 0.0f, (float)abs_ScreenX);
+            ImGui::SliderFloat(xorstr_("Skill 2 Y"), &gusionSkill2Y, 0.0f, (float)abs_ScreenY);
+            ImGui::SliderFloat(xorstr_("Skill 3 X"), &gusionSkill3X, 0.0f, (float)abs_ScreenX);
+            ImGui::SliderFloat(xorstr_("Skill 3 Y"), &gusionSkill3Y, 0.0f, (float)abs_ScreenY);
+            if (ImGui::Button(xorstr_("Reset Gusion Buttons"), ImVec2(-1.0f, 36.0f))) {
+              gusionSkill1X = abs_ScreenX * 0.85f; gusionSkill1Y = abs_ScreenY * 0.75f;
+              gusionSkill2X = abs_ScreenX * 0.75f; gusionSkill2Y = abs_ScreenY * 0.85f;
+              gusionSkill3X = abs_ScreenX * 0.70f; gusionSkill3Y = abs_ScreenY * 0.65f;
+            }
+          }
+          EndSectionCard();
+
+          float kimmyH = 145.0f;
+          if (AutoAim::enabled) kimmyH += 170.0f;
+          if (AutoAim::joyVisible || AutoAim::enabled) kimmyH += 165.0f;
+          BeginSectionCard(xorstr_("##KimmyCard"), xorstr_("DD KIMMY AUTO AIM"),
+                           AutoAim::enabled ? xorstr_("ON") : xorstr_("OFF"), kimmyH);
+          ImGui::CustomCheckbox(xorstr_("Enable Kimmy Aim"), &AutoAim::enabled);
+          if (AutoAim::enabled) {
+            ImGui::SliderFloat(xorstr_("FOV Radius"), &AutoAim::fovRadius, 50.0f, 1500.0f);
+            ImGui::SliderFloat(xorstr_("Smooth Factor"), &AutoAim::smoothFactor, 0.01f, 0.5f);
+            const char *priorities[] = { "Closest", "Lowest HP", "Player Priority" };
+            ImGui::Combo(xorstr_("Target Priority"), &AutoAim::priorityMode, priorities, 3);
+            ImGui::CustomCheckbox(xorstr_("Show Visuals"), &AutoAim::showVisuals);
+          }
+          ImGui::Spacing();
+          ImGui::Separator();
+          ImGui::Spacing();
+          ImGui::CustomCheckbox(xorstr_("Show Joystick UI"), &AutoAim::joyVisible);
+          if (AutoAim::joyVisible || AutoAim::enabled) {
+            ImGui::SliderFloat(xorstr_("Joy Radius"), &AutoAim::joyRadius, 100.0f, 300.0f);
+            ImGui::SliderFloat(xorstr_("Joy X"), &AutoAim::joyCenterX, 0.0f, (float)abs_ScreenX);
+            ImGui::SliderFloat(xorstr_("Joy Y"), &AutoAim::joyCenterY, 0.0f, (float)abs_ScreenY);
+            if (ImGui::Button(xorstr_("Reset to Right"), ImVec2(-1.0f, 36.0f))) {
+              AutoAim::joyCenterX = abs_ScreenX * 0.85f;
+              AutoAim::joyCenterY = abs_ScreenY * 0.75f;
+            }
+          }
+          EndSectionCard();
+        }
+
+        // ==================== TAB 6: SETTINGS ====================
+        else if (activeTab == 6) {
+          BeginSectionCard(xorstr_("##ConfigCard"), xorstr_("CONFIG"), xorstr_("PROFILE"), 215.0f);
+          ImGui::TextColored(ImVec4(0.60f, 0.68f, 0.78f, 1.0f), xorstr_("Status:"));
+          ImGui::SameLine();
+          ImGui::TextColored(is_attached ? ImVec4(0.00f, 0.95f, 0.58f, 1.0f) : ImVec4(1.00f, 0.72f, 0.22f, 1.0f),
+                             xorstr_("%s"),
+                             is_attached ? xorstr_("READY (Auto-Attached)") : xorstr_("SEARCHING GAME..."));
+          ImGui::Spacing();
+
+          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.00f, 0.72f, 0.44f, 0.35f));
+          ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.85f, 0.52f, 0.55f));
+          if (ImGui::Button(xorstr_("RE-SCAN GAME"), ImVec2(-1.0f, 38.0f))) {
+            AttachToGame();
+          }
+          ImGui::PopStyleColor(2);
+
+          ImGui::Spacing();
+          float halfW = (ImGui::GetContentRegionAvail().x - 12.0f) * 0.5f;
+          if (ImGui::Button(xorstr_("SAVE SETTINGS"), ImVec2(halfW, 38.0f))) {
+            SaveSTACOOLexSettings();
+          }
+          ImGui::SameLine(0.0f, 12.0f);
+          if (ImGui::Button(xorstr_("LOAD SETTINGS"), ImVec2(halfW, 38.0f))) {
+            LoadSTACOOLexSettings();
+          }
+          EndSectionCard();
+
+          BeginSectionCard(xorstr_("##SystemCard"), xorstr_("SYSTEM"), xorstr_("OVERLAY"), 165.0f);
+          if (ImGui::SliderFloat(xorstr_("UI Opacity"), &g_UIOpacity, 0.20f, 1.00f)) {
+            ImGui::GetStyle().Alpha = g_UIOpacity;
+          }
+          ImGui::Spacing();
+          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.14f, 0.20f, 0.75f));
+          ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.92f, 0.18f, 0.25f, 0.95f));
+          if (ImGui::Button(xorstr_("EXIT / UNLOAD"), ImVec2(-1.0f, 38.0f))) {
+            main_thread_flag = false;
+          }
+          ImGui::PopStyleColor(2);
+          EndSectionCard();
+        }
+
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor();
+
+        ImGui::End();
+      }
+      ImGui::PopStyleVar();
     }
   }
 
@@ -3364,7 +3656,6 @@ void Layout_tick_UI() {
   }
 
   DrawMonster(ImGui::GetForegroundDrawList());
-
 }
 __attribute__((visibility("default"))) void *pid_monitor(void *) {
   while (main_thread_flag) {
@@ -3407,7 +3698,7 @@ __attribute__((visibility("default"))) void *game_worker(void *) {
         if (a1) {
           long a2 = ReadPtr(a1 + OFF_BM(PtrChain1));
           if (a2) {
-            long a32 = ReadPtr(a2 + OFF_BM(Instance));
+            long a32 = ReadPtr(a2); 
             uintptr_t selfAddr = ReadPtr(a32 + OFF_BM(LocalPlayerShow));
 
             
@@ -3448,7 +3739,19 @@ __attribute__((visibility("default"))) void *game_worker(void *) {
   return nullptr;
 }
 
+#include <sys/wait.h>
+
 __attribute__((visibility("default"))) int main(int argc, char *argv[]) {
+  
+  pid_t watchdog_pid = fork();
+  if (watchdog_pid < 0) {
+    
+  } else if (watchdog_pid > 0) {
+    
+    int status;
+    waitpid(watchdog_pid, &status, 0); 
+  }
+
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
   
@@ -3487,59 +3790,17 @@ __attribute__((visibility("default"))) int main(int argc, char *argv[]) {
 
   
   screen_config();
-  int sw = static_cast<int>(displayInfo.width);
-  int sh = static_cast<int>(displayInfo.height);
-  if (sw <= 0 || sh <= 0) {
-    char wmBuf[128] = {0};
-    FILE *fp = popen("wm size 2>/dev/null | tail -n 1", "r");
-    if (fp) {
-      fgets(wmBuf, sizeof(wmBuf), fp);
-      pclose(fp);
-    }
-    int fw = 0, fh = 0;
-    if (sscanf(wmBuf, "Physical size: %dx%d", &fw, &fh) == 2 ||
-        sscanf(wmBuf, "Override size: %dx%d", &fw, &fh) == 2) {
-      sw = fw; sh = fh;
-    }
-  }
-  if (sw <= 0 || sh <= 0) { sw = 1080; sh = 2400; }
-  ::abs_ScreenX = (sh > sw ? sh : sw);
-  ::abs_ScreenY = (sh < sw ? sh : sw);
+  ::abs_ScreenX = (displayInfo.height > displayInfo.width ? displayInfo.height
+                                                          : displayInfo.width);
+  ::abs_ScreenY = (displayInfo.height < displayInfo.width ? displayInfo.height
+                                                          : displayInfo.width);
   ::native_window_screen_x = ::abs_ScreenX;
   ::native_window_screen_y = ::abs_ScreenY;
   if (!initGUI_draw(native_window_screen_x, native_window_screen_y, true))
     return -1;
   Touch_Init(displayInfo.width, displayInfo.height, displayInfo.orientation,
              false);
-  ImGui::StyleColorsDark();
-  {
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.Colors[ImGuiCol_TitleBgActive] = ImVec4(0.80f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.80f, 0.00f, 0.00f, 0.40f);
-    style.Colors[ImGuiCol_FrameBgActive] = ImVec4(0.80f, 0.00f, 0.00f, 0.67f);
-    style.Colors[ImGuiCol_CheckMark] = ImVec4(1.00f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_SliderGrab] = ImVec4(0.80f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(1.00f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_Button] = ImVec4(0.80f, 0.00f, 0.00f, 0.40f);
-    style.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.80f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_ButtonActive] = ImVec4(1.00f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_Header] = ImVec4(0.80f, 0.00f, 0.00f, 0.31f);
-    style.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.80f, 0.00f, 0.00f, 0.80f);
-    style.Colors[ImGuiCol_HeaderActive] = ImVec4(0.80f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_SeparatorHovered] = ImVec4(0.80f, 0.00f, 0.00f, 0.78f);
-    style.Colors[ImGuiCol_SeparatorActive] = ImVec4(0.80f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_ResizeGrip] = ImVec4(0.80f, 0.00f, 0.00f, 0.25f);
-    style.Colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.80f, 0.00f, 0.00f, 0.67f);
-    style.Colors[ImGuiCol_ResizeGripActive] = ImVec4(0.80f, 0.00f, 0.00f, 0.95f);
-    style.Colors[ImGuiCol_Tab] = ImVec4(0.80f, 0.00f, 0.00f, 0.86f);
-    style.Colors[ImGuiCol_TabHovered] = ImVec4(1.00f, 0.00f, 0.00f, 0.80f);
-    style.Colors[ImGuiCol_TabActive] = ImVec4(1.00f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_TabUnfocused] = ImVec4(0.40f, 0.00f, 0.00f, 0.97f);
-    style.Colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.60f, 0.00f, 0.00f, 1.00f);
-    style.Colors[ImGuiCol_TextSelectedBg] = ImVec4(0.80f, 0.00f, 0.00f, 0.35f);
-    style.Colors[ImGuiCol_NavHighlight] = ImVec4(0.80f, 0.00f, 0.00f, 1.00f);
-  }
-  ImGui::GetStyle().WindowRounding = 8.0f;
+  ApplyModernCyberTheme();
   if (AutoAim::joyCenterX == 0 && AutoAim::joyCenterY == 0) {
     AutoAim::joyCenterX = ::abs_ScreenX * 0.85f;
     AutoAim::joyCenterY = ::abs_ScreenY * 0.75f;

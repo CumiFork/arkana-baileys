@@ -49,25 +49,8 @@ ssize_t process_v(pid_t _pid, const struct iovec *_local_iov,
 }
 
 
-static bool pvm_proc_mem(pid_t pid, void* address, void* buffer, size_t size, bool isWrite) {
-    char memPath[64];
-    snprintf(memPath, sizeof(memPath), "/proc/%d/mem", pid);
-    int fd = sex::open(memPath, isWrite ? O_RDWR : O_RDONLY, 0);
-    if (fd < 0) return false;
-    off_t off = static_cast<off_t>(reinterpret_cast<uintptr_t>(address));
-    if (sex::lseek(fd, off, SEEK_SET) == (off_t)-1) {
-        sex::close(fd);
-        return false;
-    }
-    ssize_t bytes = isWrite ? sex::write(fd, buffer, size) : sex::read(fd, buffer, size);
-    sex::close(fd);
-    return bytes == static_cast<ssize_t>(size);
-}
-
 bool pvm(pid_t pid, void* address, void* buffer, size_t size, bool isWrite) {
-    if (pid < 10 || !address || !buffer || size == 0) return false;
-    uintptr_t addr = reinterpret_cast<uintptr_t>(address);
-    if (addr < 0x10000ULL || addr > 0x7FFFFFFFFFFFULL) return false;
+    if (pid < 10) return false;
     struct iovec local[1];
     struct iovec remote[1];
     local[0].iov_base = buffer;
@@ -75,9 +58,7 @@ bool pvm(pid_t pid, void* address, void* buffer, size_t size, bool isWrite) {
     remote[0].iov_base = address;
     remote[0].iov_len = size;
     ssize_t bytes = process_v(pid, local, 1, remote, 1, 0, isWrite);
-    if (bytes == static_cast<ssize_t>(size)) return true;
-    // Fallback to /proc/<pid>/mem for external read/write compatibility
-    return pvm_proc_mem(pid, address, buffer, size, isWrite);
+    return bytes == size;
 }
 
 
@@ -340,28 +321,29 @@ uintptr_t Memory::GetEndInSplit(const char *splitName, const char *libName, pid_
 }
     
 int Memory::ProcessRead(void *address, void *out, size_t size, pid_t pid) {
-    if (pid < 1 || !out || size == 0) return -1;
-    uintptr_t addr = reinterpret_cast<uintptr_t>(address);
-    if (addr < 0x10000ULL || addr > 0x7FFFFFFFFFFFULL) return 1;
+    if (pid < 1) return -1;
+    if (uintptr_t(address) < 0xFFFFF) return 1;
     if (!pvm(pid, address, out, size, false)) {
+        //LOGE("ProcessRead %p", address);
         return 1;
     }
     return 0;
 }
 int Memory::ProcessRead(uintptr_t address, void *out, size_t size, pid_t pid) {
-    if (pid < 1 || !out || size == 0) return -1;
-    if (address < 0x10000ULL || address > 0x7FFFFFFFFFFFULL) return 1;
-    if (!pvm(pid, reinterpret_cast<void*>(address), out, size, false)) {
+    if (pid < 1) return -1;
+    if (uintptr_t(address) < 0xFFFFF) return 1;
+    if (!pvm(pid, (void*)address, out, size, false)) {
+        //LOGE("ProcessRead %p", address);
         return 1;
     }
     return 0;
 }
 
 int Memory::ProcessWrite(void *address, void *data, size_t size, pid_t pid) {
-    if (pid < 1 || !data || size == 0) return -1;
-    uintptr_t addr = reinterpret_cast<uintptr_t>(address);
-    if (addr < 0x10000ULL || addr > 0x7FFFFFFFFFFFULL) return 1;
+    if (pid < 1) return -1;
+    if (uintptr_t(address) < 0xFFFFF) return 1;
     if (!pvm(pid, address, data, size, true)) {
+        //LOGE("ProcessWrite %p", address);
         return 1;
     }
     return 0;
@@ -382,11 +364,11 @@ std::string Memory::Exec(const char *cmd) {
 }
 
 bool Memory::IsInvalidAddress(uintptr_t address) {
-    return address < 0x10000ULL || address > 0x7FFFFFFFFFFFULL;
+    return /*is_page_present(address) != 1 ||*/ address == 0x0000000000 || address == 0 || address == 0x000;
 }
 bool Memory::IsInvalidAddress(void *addrs) {
     auto address = reinterpret_cast<uintptr_t>(addrs);
-    return address < 0x10000ULL || address > 0x7FFFFFFFFFFFULL;
+    return /*is_page_present(address) != 1 ||*/ address == 0x0000000000 || address == 0 || address == 0x000;
 }
 
 uintptr_t Memory::FindPattern(uintptr_t start, size_t length, const unsigned char* pattern, const char* mask) {
