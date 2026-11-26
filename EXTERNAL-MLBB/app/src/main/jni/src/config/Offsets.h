@@ -94,6 +94,7 @@ namespace Offsets {
 
     namespace BattleManager {
                 const size_t BasePtr = 0x635b290;
+                const size_t Instance = 0x0;
                 const size_t LocalPlayerShow = 0x48;
                 const size_t ShowPlayers = 0x70;
                 const size_t ShowMonsters = 0x78;
@@ -187,6 +188,7 @@ namespace Offsets {
     namespace LogicBattleManager {
         const size_t BasePtr = 0x635b5d8;
         const size_t PtrChain1 = 0xa8;
+        const size_t Instance = 0x10;
         const size_t m_uiFrameTime = 0x13c;
     } 
 

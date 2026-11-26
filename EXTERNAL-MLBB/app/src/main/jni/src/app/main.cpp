@@ -719,7 +719,7 @@ uintptr_t GetLogicBattleManagerInstance() {
   auto staticPtr = Read<uintptr_t>(logicBattleManager + OFF_BLC(PtrChain1));
   if (!staticPtr)
     return 0;
-  auto instancePtr = Read<uintptr_t>(staticPtr);
+  auto instancePtr = Read<uintptr_t>(staticPtr + OFF_BLC(Instance));
   if (!instancePtr)
     return 0;
   return instancePtr;
@@ -1169,7 +1169,7 @@ void UpdateAutoSwordLing(uintptr_t selfAddr) {
     
     long a1 = ReadPtr(libbase + OFF_BM(BasePtr));
     long a2 = ReadPtr(a1 + OFF_BM(PtrChain1));
-    long a32 = ReadPtr(a2);
+    long a32 = ReadPtr(a2 + OFF_BM(Instance));
 
     long playerList = ReadPtr(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListDataOffset)) + OFF_BM(ListArrayOffset);
     uint playerCount = Read<uint>(ReadPtr(a32 + OFF_BM(ShowPlayers)) + OFF_BM(ListCountOffset));
@@ -1229,7 +1229,7 @@ void DrawMonster(ImDrawList *Draw) {
   if (!a1) return;
   long a2 = ReadPtr((a1 + ((0x100 | OFF_BM(PtrChain1)) & 0xFF)));
   if (!a2) return;
-  long a32 = ReadPtr((a2 << 1) >> 1);
+  long a32 = ReadPtr(((a2 << 1) >> 1) + OFF_BM(Instance));
   if (!a32) return;
   long selfp = ReadPtr(a32 + OFF_BM(LocalPlayerShow));
   if (!selfp) return;
@@ -1505,7 +1505,7 @@ void MonsterRetribution() {
   if (!a1) return;
   long a2 = ReadPtr((a1 + ((0x100 | OFF_BM(PtrChain1)) & 0xFF)));
   if (!a2) return;
-  long a32 = ReadPtr((a2 << 1) >> 1);
+  long a32 = ReadPtr(((a2 << 1) >> 1) + OFF_BM(Instance));
   if (!a32) return;
 
   Oneself = ReadPtr(a32 + OFF_BM(LocalPlayerShow));
@@ -1608,7 +1608,7 @@ void DrawMinimapESP(ImDrawList *draw) {
   long a2 = ReadPtr(a1 + OFF_BM(PtrChain1));
   if (!a2)
     return;
-  long a32 = ReadPtr(a2);
+  long a32 = ReadPtr(a2 + OFF_BM(Instance));
   if (!a32)
     return;
 
@@ -3407,7 +3407,7 @@ __attribute__((visibility("default"))) void *game_worker(void *) {
         if (a1) {
           long a2 = ReadPtr(a1 + OFF_BM(PtrChain1));
           if (a2) {
-            long a32 = ReadPtr(a2); 
+            long a32 = ReadPtr(a2 + OFF_BM(Instance));
             uintptr_t selfAddr = ReadPtr(a32 + OFF_BM(LocalPlayerShow));
 
             
