@@ -1,8 +1,20 @@
 #include "SkillIcons_loader.h"
-#include "SkillIcons.h"
 #include <unordered_map>
 #include <GLES3/gl3.h>
 #include "stb_image.h"
+
+#if __has_include("SkillIcons.h")
+#include "SkillIcons.h"
+#else
+struct SkillIconData {
+    int heroId;
+    int skillIdx;
+    const unsigned char* data;
+    unsigned int len;
+};
+static const int TOTAL_SKILL_ICONS = 0;
+static const SkillIconData skill_icon_registry[] = {};
+#endif
 
 // Key menggunakan long long agar heroId dan skillIndex besar (seperti 20010) tidak bentrok
 static std::unordered_map<long long, ImTextureID> g_SkillIconCache;
